@@ -24,3 +24,7 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
+          # "topics" is repository metadata only an admin can set (GitHub →
+          # About → Topics). Remove this ignore once topics are added — the
+          # hacs/default submission enforces the check regardless.
+          ignore: topics

@@ -40,7 +40,10 @@ rotates.
 
 ## Development
 
-This repository is the **distribution home** for the integration. Development
+This repository is the **distribution home** for the integration. The one
+distribution-only addition is `custom_components/securacv/brand/` — HACS reads
+its icon and logo from there until the `home-assistant/brands` submission is
+merged; everything else is byte-identical to the monorepo. Development
 currently happens in the main monorepo —
 [`kmay89/securaCV`](https://github.com/kmay89/securaCV) under
 `custom_components/securacv/` — where the privacy invariants and the
