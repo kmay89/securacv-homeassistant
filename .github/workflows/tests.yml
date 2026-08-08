@@ -1,0 +1,31 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pytest:
+    name: pytest (${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install -r requirements_test.txt
+      # Three tests check the integration against monorepo ground truth
+      # (spec/witness_dictionary.json, docs/voice_sentences_en.yaml) that only
+      # exists in kmay89/securaCV, where they run in CI. The test files here
+      # stay byte-identical to the monorepo copies, so they are deselected
+      # rather than edited.
+      - run: >
+          pytest custom_components/securacv/tests -q
+          --deselect custom_components/securacv/tests/test_homekit_projection.py::test_mirror_matches_the_dictionary
+          --deselect custom_components/securacv/tests/test_homekit_projection.py::test_hold_window_is_sane
+          --deselect custom_components/securacv/tests/test_voice.py::test_sentences_yaml_matches_registered_intents
