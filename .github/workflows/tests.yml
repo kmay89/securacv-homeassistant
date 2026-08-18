@@ -3,21 +3,43 @@ name: Tests
 on:
   push:
     branches: [main]
+    paths:
+      - 'custom_components/**'
+      - 'conftest.py'
+      - 'requirements_test.txt'
+      - '.github/workflows/tests.yml'
   pull_request:
+    paths:
+      - 'custom_components/**'
+      - 'conftest.py'
+      - 'requirements_test.txt'
+      - '.github/workflows/tests.yml'
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A new push to a PR branch supersedes the in-flight run; main is never
+# canceled.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   pytest:
     name: pytest (${{ matrix.python }})
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       matrix:
         python: ["3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: requirements_test.txt
       - run: pip install -r requirements_test.txt
       # Three tests check the integration against monorepo ground truth
       # (spec/witness_dictionary.json, docs/voice_sentences_en.yaml) that only

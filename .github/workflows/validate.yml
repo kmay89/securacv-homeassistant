@@ -1,27 +1,56 @@
 name: Validate
 
+# hassfest + HACS validate the integration's structure and metadata. The
+# weekly schedule re-runs both against CURRENT upstream rules even when
+# nothing was pushed — hassfest and the HACS checks tighten over time, and
+# a rule change upstream should surface here, not in a user's install.
 on:
   push:
     branches: [main]
+    paths:
+      - 'custom_components/**'
+      - 'hacs.json'
+      - 'README.md'
+      - '.github/workflows/validate.yml'
   pull_request:
+    paths:
+      - 'custom_components/**'
+      - 'hacs.json'
+      - 'README.md'
+      - '.github/workflows/validate.yml'
   schedule:
     - cron: "0 4 * * 1"
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A new push to a PR branch supersedes the in-flight run; main is never
+# canceled.
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   hassfest:
     name: Hassfest
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: home-assistant/actions/hassfest@master
+      - uses: actions/checkout@v7
+      # Same SHA pin as the monorepo's homeassistant-freshness.yml — bump
+      # both together.
+      - uses: home-assistant/actions/hassfest@a7c616ce81ccda50150bf1595786c71b1883fabb # master
 
   hacs:
     name: HACS
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: hacs/action@main
+      - uses: actions/checkout@v7
+      # Same SHA pin as the monorepo's homeassistant-freshness.yml — bump
+      # both together.
+      - uses: hacs/action@d556e736723344f83838d08488c983a15381059a # main
         with:
           category: integration
           # "topics" is repository metadata only an admin can set (GitHub →

@@ -1,0 +1,57 @@
+name: Workflow Lint
+
+# The CI config is code too — two gates keep it honest:
+#
+#   · actionlint — syntax, expressions, impossible `if:`s, and shellcheck
+#     on every run: block, so a broken workflow fails the PR that
+#     introduces it instead of silently mis-running later.
+#   · CI policy — .github/scripts/ci_policy_check.py enforces the general
+#     rules in .github/CI.md (permissions, timeouts, concurrency, pinned
+#     actions, path filters) on every workflow, current and FUTURE. New
+#     workflows can't regress the conventions; exemptions live in
+#     .github/ci-policy.yml where review can see them.
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/**'
+      - '.github/scripts/**'
+      - '.github/ci-policy.yml'
+      - '.github/CI.md'
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - '.github/scripts/**'
+      - '.github/ci-policy.yml'
+      - '.github/CI.md'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: workflows-lint-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      # Pinned image; bundles shellcheck + pyflakes for run: block linting.
+      - name: Run actionlint
+        uses: docker://rhysd/actionlint:1.7.7
+        with:
+          args: -color
+
+  ci-policy:
+    name: CI policy (.github/CI.md)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install PyYAML
+        run: python3 -m pip install --quiet pyyaml
+      - name: Enforce the CI ground rules on every workflow
+        run: python3 .github/scripts/ci_policy_check.py
