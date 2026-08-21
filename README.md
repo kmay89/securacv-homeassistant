@@ -9,12 +9,23 @@ creates:
 
 - witness event sensors (semantic events — "large object crossed boundary" —
   never footage, never identity),
-- a chain-integrity sensor and a **Verify Now** button ("verified" means every
-  Ed25519 signature in the chain re-checked against a pinned key — nothing looser),
-- a daily-digest sensor,
-- the Verified Timeline and Aim Lovelace cards (`www/`).
+- chain-integrity and daily-digest sensors ("verified" means every Ed25519
+  signature in the chain re-checked against a pinned key — nothing looser;
+  the kernel app's MQTT discovery adds a **Verify Now** button beside them),
+- the Verified Timeline and Aim Lovelace cards (`www/`), registered as
+  dashboard resources automatically.
 
 ## Install
+
+**Fastest (Home Assistant OS):** one narrated, idempotent command from the
+Terminal & SSH app installs and wires the whole stack — broker, Frigate, the
+kernel app, this integration and its config entry, blueprints, dashboards:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kmay89/securaCV/main/scripts/install.sh | bash
+```
+
+**By hand:**
 
 [![Open your Home Assistant instance and add this repository inside HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=kmay89&repository=securacv-homeassistant&category=integration)
 
@@ -22,8 +33,10 @@ The badge adds this repository to HACS in one click (SecuraCV is not in the
 default HACS store yet). Or manually: HACS → **⋮ → Custom repositories** → add
 `https://github.com/kmay89/securacv-homeassistant` as an **Integration**.
 
-Then install **SecuraCV** from HACS, restart Home Assistant, and go to
-**Settings → Devices & Services → Add Integration → SecuraCV**.
+Then install **SecuraCV** from HACS, restart Home Assistant, go to
+**Settings → Devices & Services → Add Integration → SecuraCV**, and keep the
+default **"Automatic — detect what's installed"** — it probes for a running
+kernel and configures the right mode with nothing to type.
 
 Requires Home Assistant 2024.4.1 or newer, with [HACS](https://hacs.xyz)
 installed.
@@ -31,9 +44,8 @@ installed.
 ## Which setup do you need?
 
 **Have Canary devices?** You only need an MQTT broker (the Mosquitto app
-works). Pick **"Canary devices via MQTT (Recommended)"** in the config flow
-and your Canaries auto-discover within about 30 seconds of connecting —
-no kernel required. Full walkthrough:
+works). The **Automatic** default covers this; your Canaries auto-discover
+within about 30 seconds of connecting — no kernel required. Full walkthrough:
 [Home Assistant setup guide](https://github.com/kmay89/securaCV/blob/main/docs/homeassistant_setup.md).
 
 **Witnessing cameras (Frigate or standalone)?** That's the Privacy Witness
@@ -41,9 +53,11 @@ Kernel, which runs separately. The easiest way is the Home Assistant **app**
 (older Home Assistant calls these add-ons) from the main repository —
 [add the app repository in one click](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fkmay89%2FsecuraCV)
 — or run it as a Docker container or service. See the
-[kernel quick start](https://github.com/kmay89/securaCV/blob/main/docs/homeassistant_setup.md#quick-start-hacs--kernel).
+[one-command quick start](https://github.com/kmay89/securaCV/blob/main/docs/homeassistant_setup.md#quick-start-one-command).
 
-Running both at once is fully supported — the config flow has a mode for it.
+Running both at once is fully supported — the **Automatic** mode picks it
+when a kernel answers, and the app announces itself to Home Assistant so the
+integration appears as a discovered card on its own.
 
 ## Configuration
 
