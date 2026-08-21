@@ -1,0 +1,28 @@
+# Automated dependency update PRs. Two surfaces: the pytest toolchain
+# (requirements_test.txt) and the actions used by .github/workflows/ —
+# with R8 (third-party actions SHA-pinned, .github/CI.md) Dependabot is
+# what keeps those pins from going stale: it bumps the SHA and its
+# `# <version>` comment together.
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(pip)"
+    groups:
+      pip-test-deps:
+        patterns: ["*"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci(actions)"
+    groups:
+      github-actions:
+        patterns: ["*"]

@@ -6,7 +6,9 @@ with ``discovery_info.get("topic", "")`` — dict API from before 2022.6 —
 which raised AttributeError on the very first ``securacv/#`` publish and
 killed the advertised discovery prompt. These tests drive the step with a
 slots-dataclass stub shaped exactly like the real service info, so dict
-access can never regress silently again.
+access can never regress silently again. The step also keeps a dict
+fallback for older cores and stubs, dedupes by ``mqtt_<prefix>``
+unique_id, and hands off to the confirm step.
 """
 
 from __future__ import annotations
@@ -33,6 +35,7 @@ class _StubConfigFlow:
 _ce_mod.ConfigFlow = _StubConfigFlow
 
 from .. import config_flow  # noqa: E402
+from ..const import DEFAULT_MQTT_PREFIX  # noqa: E402
 
 
 @dataclass(slots=True)
@@ -65,13 +68,19 @@ def _info(topic: str) -> _MqttServiceInfo:
 def _flow_with_captured_next_step():
     flow = config_flow.SecuraCVConfigFlow()
     flow.context = {}
-    called: dict[str, bool] = {}
+    called: dict[str, object] = {}
 
-    async def _fake_mqtt_config(user_input=None):
-        called["mqtt_config"] = True
-        return {"type": "form", "step_id": "mqtt_config"}
+    async def _fake_confirm(user_input=None):
+        called["confirm"] = True
+        return {"type": "form", "step_id": "confirm"}
 
-    flow.async_step_mqtt_config = _fake_mqtt_config
+    async def _fake_set_unique_id(unique_id):
+        called["unique_id"] = unique_id
+
+    flow.async_step_confirm = _fake_confirm
+    flow.async_set_unique_id = _fake_set_unique_id
+    flow._abort_if_unique_id_configured = lambda: None
+    flow._async_current_entries = lambda: []
     return flow, called
 
 
@@ -86,16 +95,26 @@ def test_mqtt_discovery_reads_topic_as_attribute() -> None:
     """The step must survive a slots-dataclass service info and route on."""
     flow, called = _flow_with_captured_next_step()
     result = run(flow.async_step_mqtt(_info("securacv/canary01/status")))
-    assert result == {"type": "form", "step_id": "mqtt_config"}
-    assert called.get("mqtt_config") is True
-    # The prefix seen on the wire pre-fills the manual form.
+    assert result == {"type": "form", "step_id": "confirm"}
+    assert called.get("confirm") is True
+    # The prefix seen on the wire pre-fills the confirm step and keys dedupe.
     assert flow.context["mqtt_prefix"] == "securacv"
-    assert flow.context["title_placeholders"] == {"name": "SecuraCV (securacv)"}
+    assert flow.context["title_placeholders"] == {"name": "securacv"}
+    assert called.get("unique_id") == "mqtt_securacv"
 
 
 def test_mqtt_discovery_with_short_topic_still_routes() -> None:
-    """A degenerate topic sets no prefix but must not crash the flow."""
+    """A degenerate topic falls back to the default prefix, no crash."""
     flow, called = _flow_with_captured_next_step()
     run(flow.async_step_mqtt(_info("securacv")))
-    assert called.get("mqtt_config") is True
-    assert "mqtt_prefix" not in flow.context
+    assert called.get("confirm") is True
+    assert flow.context["mqtt_prefix"] == DEFAULT_MQTT_PREFIX
+
+
+def test_mqtt_discovery_accepts_dict_payload_from_older_cores() -> None:
+    """The dict fallback keeps pre-2022.6 cores and stubs working."""
+    flow, called = _flow_with_captured_next_step()
+    run(flow.async_step_mqtt({"topic": "barn/canary02/status"}))
+    assert called.get("confirm") is True
+    assert flow.context["mqtt_prefix"] == "barn"
+    assert called.get("unique_id") == "mqtt_barn"
