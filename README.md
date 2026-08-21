@@ -15,6 +15,11 @@ creates:
 - the Verified Timeline and Aim Lovelace cards (`www/`), registered as
   dashboard resources automatically.
 
+Two entities you may have seen in screenshots come from the **Privacy Witness
+Kernel add-on's MQTT bridge**, not from this integration: the **Verify Now**
+button (`button.pwk_verify_now`) and the daily-digest sensor
+(`sensor.pwk_daily_digest`) appear only when that bridge runs in daemon mode.
+
 ## Install
 
 **Fastest (Home Assistant OS):** one narrated, idempotent command from the
