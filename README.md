@@ -9,10 +9,15 @@ creates:
 
 - witness event sensors (semantic events — "large object crossed boundary" —
   never footage, never identity),
-- a chain-integrity sensor and a **Verify Now** button ("verified" means every
-  Ed25519 signature in the chain re-checked against a pinned key — nothing looser),
-- a daily-digest sensor,
+- chain-integrity sensors ("verified" means the Ed25519 signature checked
+  against a pinned key — nothing looser), plus device health, tamper, and
+  transport sensors,
 - the Verified Timeline and Aim Lovelace cards (`www/`).
+
+Two entities you may have seen in screenshots come from the **Privacy Witness
+Kernel add-on's MQTT bridge**, not from this integration: the **Verify Now**
+button (`button.pwk_verify_now`) and the daily-digest sensor
+(`sensor.pwk_daily_digest`) appear only when that bridge runs in daemon mode.
 
 ## Install
 
