@@ -1,0 +1,66 @@
+# Is this HACS mirror still the monorepo's integration?
+#
+# custom_components/securacv/ here is a byte-for-byte copy of the same
+# directory in kmay89/securaCV (plus brand/, which HACS wants). Nothing
+# syncs them automatically, so this is the gate: on every push and PR that
+# touches the integration, and weekly on a schedule, sparse-clone just that
+# directory from the monorepo and diff. Drift fails the run and prints the
+# copy commands; the weekly run additionally raises ONE deduplicated issue
+# so a fix that landed upstream cannot sit unmirrored for weeks unnoticed.
+name: mirror freshness
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'custom_components/**'
+      - '.github/scripts/check_mirror_sync.py'
+      - '.github/workflows/mirror-freshness.yml'
+  pull_request:
+    paths:
+      - 'custom_components/**'
+      - '.github/scripts/check_mirror_sync.py'
+      - '.github/workflows/mirror-freshness.yml'
+  schedule:
+    - cron: "17 6 * * 1" # Mondays 06:17 UTC, off the :00 stampede
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # the scheduled run raises a deduplicated issue on drift
+  issues: write
+
+concurrency:
+  group: mirror-freshness-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  compare:
+    name: custom_components/securacv matches kmay89/securaCV
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Sparse-clone the monorepo integration directory
+        run: |
+          git clone --depth 1 --filter=blob:none --sparse \
+            https://github.com/kmay89/securaCV.git /tmp/securaCV
+          git -C /tmp/securaCV sparse-checkout set custom_components/securacv
+          echo "upstream: $(git -C /tmp/securaCV rev-parse --short HEAD)"
+      - name: Compare
+        id: compare
+        run: python3 .github/scripts/check_mirror_sync.py --source /tmp/securaCV
+      - name: Raise (or refresh) the drift issue on a scheduled run
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TITLE="HACS mirror has drifted from kmay89/securaCV"
+          OPEN=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number --jq '.[].number' | head -1)
+          RUN="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          BODY_TAIL=$'\n\n'"Raised by \`mirror-freshness.yml\`; this issue is reused while it stays open."
+          if [ -n "$OPEN" ]; then
+            gh issue comment "$OPEN" --body "Still drifted on $(date -u +%Y-%m-%d) — see the run log for the copy commands: $RUN"
+          else
+            gh issue create --title "$TITLE" --body "The weekly mirror-freshness check found that \`custom_components/securacv/\` here no longer matches the monorepo's copy. The run log lists every DIFFERENT / MISSING / EXTRA file and the exact \`cp\` commands to resync: ${RUN}${BODY_TAIL}"
+          fi
