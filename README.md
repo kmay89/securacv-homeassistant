@@ -82,13 +82,13 @@ offline).
 ## Development
 
 This repository is the **distribution home** for the integration. The one
-distribution-only addition is `custom_components/securacv/brand/`: the icon
-and logo staged for the `home-assistant/brands` submission. HACS does **not**
-read them from here — it only ever loads brand images from that central
-repository — so until the submission is merged the integration shows no icon,
-and the folder is carried along into every install unused. Everything else is
-byte-identical to the monorepo (the weekly `mirror-freshness` check enforces
-it, with `brand/` as its one allowed extra). Development
+distribution-only addition is `custom_components/securacv/brand/`, the icon
+and logo staged for the `home-assistant/brands` submission. HACS does not read
+them from here — it takes integration icons from the brands repository only —
+so until that submission is merged the integration shows without an icon, and
+the folder rides along into `config/custom_components/` unused. Everything else
+is byte-identical to the monorepo (`.github/workflows/mirror-freshness.yml`
+checks that weekly and on every PR). Development
 currently happens in the main monorepo —
 [`kmay89/securaCV`](https://github.com/kmay89/securaCV) under
 `custom_components/securacv/` — where the privacy invariants and the
