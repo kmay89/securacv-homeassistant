@@ -49,7 +49,33 @@ jobs:
           echo "upstream: $(git -C /tmp/securaCV rev-parse --short HEAD)"
       - name: Compare
         id: compare
-        run: python3 .github/scripts/check_mirror_sync.py --source /tmp/securaCV
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -uo pipefail
+          if python3 .github/scripts/check_mirror_sync.py --source /tmp/securaCV; then
+            exit 0
+          fi
+          # A PR here can legitimately LEAD the monorepo's main: the same
+          # change ships as a PR in both repos under the same branch name,
+          # and the mirror's PR is opened before the monorepo's has merged.
+          # In that case the mirror should match the monorepo's branch of the
+          # same name, not main. Try it; pass with a notice if it matches, so
+          # the ordering ("merge the monorepo PR first") is visible without
+          # making the gate advisory.
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ] && [ -n "${HEAD_REF:-}" ]; then
+            if git -C /tmp/securaCV fetch --depth 1 origin "refs/heads/${HEAD_REF}" 2>/dev/null \
+               && git -C /tmp/securaCV checkout -q FETCH_HEAD; then
+              echo "upstream main differs; trying monorepo branch '${HEAD_REF}' ($(git -C /tmp/securaCV rev-parse --short HEAD))"
+              if python3 .github/scripts/check_mirror_sync.py --source /tmp/securaCV; then
+                echo "::notice::custom_components/securacv matches the monorepo branch '${HEAD_REF}', not main yet — merge the monorepo PR first, then this one."
+                exit 0
+              fi
+            else
+              echo "no monorepo branch named '${HEAD_REF}' to compare against"
+            fi
+          fi
+          exit 1
       - name: Raise (or refresh) the drift issue on a scheduled run
         if: failure() && github.event_name == 'schedule'
         env:
