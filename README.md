@@ -87,13 +87,27 @@ and logo staged for the `home-assistant/brands` submission. HACS does not read
 them from here — it takes integration icons from the brands repository only —
 so until that submission is merged the integration shows without an icon, and
 the folder rides along into `config/custom_components/` unused. Everything else
-is byte-identical to the monorepo (`.github/workflows/mirror-freshness.yml`
-checks that weekly and on every PR). Development
+is byte-identical to the monorepo. Development
 currently happens in the main monorepo —
 [`kmay89/securaCV`](https://github.com/kmay89/securaCV) under
 `custom_components/securacv/` — where the privacy invariants and the
 dictionary-sync gate live; changes land there first and are synced here.
 Please file issues and PRs against the main repository.
+
+**How the mirror is refreshed.** The monorepo's
+[`homeassistant-mirror.yml`](https://github.com/kmay89/securaCV/blob/main/.github/workflows/homeassistant-mirror.yml)
+runs on every `main` commit that touches the carried set —
+`custom_components/securacv/` (minus `brand/`) and the root `conftest.py` —
+copies it here byte-for-byte, proves the copy exact with this repository's own
+[`check_mirror_sync.py`](.github/scripts/check_mirror_sync.py), and opens (or
+force-pushes) one pull request on `bot/mirror-sync`; the tests, hassfest and
+the freshness check run on that PR before it merges. It needs a `MIRROR_PAT`
+secret in the monorepo; without one it stays green and raises an issue there.
+[`mirror-freshness.yml`](.github/workflows/mirror-freshness.yml) is the
+backstop — weekly and on every PR it diffs this tree against the monorepo and
+raises one issue on drift. `requirements_test.txt` is owned here (Dependabot
+bumps it in both repositories and this side's pins lead), as are `README.md`,
+`hacs.json` and `brand/`.
 
 Run the tests standalone:
 

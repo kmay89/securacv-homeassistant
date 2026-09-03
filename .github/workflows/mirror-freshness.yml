@@ -1,10 +1,16 @@
 # Is this HACS mirror still the monorepo's integration?
 #
 # custom_components/securacv/ here is a byte-for-byte copy of the same
-# directory in kmay89/securaCV (plus brand/, which HACS wants). Nothing
-# syncs them automatically, so this is the gate: on every push and PR that
-# touches the integration, and weekly on a schedule, sparse-clone just that
-# directory from the monorepo and diff. Drift fails the run and prints the
+# directory in kmay89/securaCV (plus brand/, which HACS wants), and the root
+# conftest.py is the monorepo's too. The monorepo's
+# .github/workflows/homeassistant-mirror.yml is what keeps them that way: on
+# every main commit touching the carried set it copies the set here, proves
+# the copy exact with .github/scripts/check_mirror_sync.py, and opens a PR on
+# bot/mirror-sync. This workflow is the BACKSTOP for what that push cannot
+# see — a hand edit here, a sync that never ran (no MIRROR_PAT upstream), a
+# commit that slipped by while the secret was missing: on every push and PR
+# that touches the carried set, and weekly on a schedule, sparse-clone the
+# integration from the monorepo and diff. Drift fails the run and prints the
 # copy commands; the weekly run additionally raises ONE deduplicated issue
 # so a fix that landed upstream cannot sit unmirrored for weeks unnoticed.
 name: mirror freshness
@@ -14,11 +20,13 @@ on:
     branches: [main]
     paths:
       - 'custom_components/**'
+      - 'conftest.py'
       - '.github/scripts/check_mirror_sync.py'
       - '.github/workflows/mirror-freshness.yml'
   pull_request:
     paths:
       - 'custom_components/**'
+      - 'conftest.py'
       - '.github/scripts/check_mirror_sync.py'
       - '.github/workflows/mirror-freshness.yml'
   schedule:
