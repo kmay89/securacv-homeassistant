@@ -30,3 +30,7 @@ Repo-specific conventions:
 - `validate.yml` keeps a weekly schedule on purpose: hassfest and the
   HACS checks tighten upstream over time, and a new rule should surface
   here rather than in a user's install.
+- The integration directory and `conftest.py` arrive from the monorepo
+  through its `homeassistant-mirror.yml` (PRs on `bot/mirror-sync`); edit
+  them there, never here. `mirror-freshness.yml` is the backstop that
+  proves the copy exact. `requirements_test.txt` is owned here.
