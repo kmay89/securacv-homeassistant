@@ -104,17 +104,30 @@ force-pushes) one pull request on `bot/mirror-sync`; the tests, hassfest and
 the freshness check run on that PR before it merges. It needs a `MIRROR_PAT`
 secret in the monorepo; without one it stays green and raises an issue there.
 [`mirror-freshness.yml`](.github/workflows/mirror-freshness.yml) is the
-backstop — weekly and on every PR it diffs this tree against the monorepo and
-raises one issue on drift. `requirements_test.txt` is owned here (Dependabot
+backstop — weekly, and on pushes to `main` and PRs that touch the carried
+set, it diffs this tree against the monorepo; drift fails the run and prints
+the exact resync commands, and the weekly run additionally raises one
+deduplicated issue. `requirements_test.txt` is owned here (Dependabot
 bumps it in both repositories and this side's pins lead), as are `README.md`,
-`hacs.json` and `brand/`.
+`hacs.json`, `brand/`, and the agent briefs ([`AGENTS.md`](AGENTS.md),
+[`CLAUDE.md`](CLAUDE.md)).
 
 Run the tests standalone:
 
 ```sh
 pip install -r requirements_test.txt
-pytest custom_components/securacv/tests -q
+pytest custom_components/securacv/tests -q \
+  --deselect custom_components/securacv/tests/test_homekit_projection.py::test_mirror_matches_the_dictionary \
+  --deselect custom_components/securacv/tests/test_homekit_projection.py::test_hold_window_is_sane \
+  --deselect custom_components/securacv/tests/test_voice.py::test_sentences_yaml_matches_registered_intents
 ```
+
+The three deselected tests check the integration against monorepo ground
+truth (`spec/witness_dictionary.json`, `docs/voice_sentences_en.yaml`) that
+only exists in [`kmay89/securaCV`](https://github.com/kmay89/securaCV),
+where they run in CI — in a standalone clone of this repository they fail by
+design, so [`tests.yml`](.github/workflows/tests.yml) deselects exactly
+those three rather than editing the byte-mirrored test files.
 
 ## License
 
