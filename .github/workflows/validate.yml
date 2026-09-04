@@ -58,7 +58,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      # Same SHA pin as the monorepo's homeassistant-freshness.yml — bump
+      # Same SHA pin as the monorepo's .github/workflows/validate.yml — bump
       # both together.
       - uses: home-assistant/actions/hassfest@a7c616ce81ccda50150bf1595786c71b1883fabb # master
 
@@ -68,7 +68,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      # Same SHA pin as the monorepo's homeassistant-freshness.yml — bump
+      # Same SHA pin as the monorepo's .github/workflows/validate.yml — bump
       # both together.
       - uses: hacs/action@d556e736723344f83838d08488c983a15381059a # main
         with:
