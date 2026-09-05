@@ -9,9 +9,10 @@ creates:
 
 - witness event sensors (semantic events — "large object crossed boundary" —
   never footage, never identity),
-- chain-integrity and daily-digest sensors ("verified" means every Ed25519
-  signature in the chain re-checked against a pinned key — nothing looser;
-  the kernel app's MQTT discovery adds a **Verify Now** button beside them),
+- a chain-integrity sensor per Canary ("verified" means the Canary's latest
+  chain publish carried an Ed25519 signature that checked against its pinned
+  device key — nothing looser; re-verifying a whole log is the kernel app's
+  job, and its MQTT discovery adds a **Verify Now** button for that),
 - the Verified Timeline and Aim Lovelace cards (`www/`), registered as
   dashboard resources automatically.
 
