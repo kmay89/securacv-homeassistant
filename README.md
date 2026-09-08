@@ -45,7 +45,10 @@ default **"Automatic — detect what's installed"** — it probes for a running
 kernel and configures the right mode with nothing to type.
 
 Requires Home Assistant 2024.4.1 or newer, with [HACS](https://hacs.xyz)
-installed.
+installed. On Home Assistant 2026.3 or newer the integration shows its own
+icon — Home Assistant serves it from the bundled
+`custom_components/securacv/brand/` folder; older versions do not read that
+folder and show the generic placeholder.
 
 ## Which setup do you need?
 
@@ -82,23 +85,32 @@ offline).
 
 ## Development
 
-This repository is the **distribution home** for the integration. The one
-distribution-only addition is `custom_components/securacv/brand/`, the icon
-and logo staged for the `home-assistant/brands` submission. HACS does not read
-them from here — it takes integration icons from the brands repository only —
-so until that submission is merged the integration shows without an icon, and
-the folder rides along into `config/custom_components/` unused. Everything else
-is byte-identical to the monorepo. Development
-currently happens in the main monorepo —
-[`kmay89/securaCV`](https://github.com/kmay89/securaCV) under
-`custom_components/securacv/` — where the privacy invariants and the
-dictionary-sync gate live; changes land there first and are synced here.
+This repository is the **distribution home** for the integration: everything
+under `custom_components/securacv/` — the bundled `brand/` icon included —
+and the root `conftest.py` are byte-identical to the monorepo,
+[`kmay89/securaCV`](https://github.com/kmay89/securaCV), where development
+happens (under `custom_components/securacv/`, beside the privacy invariants
+and the dictionary-sync gate). Changes land there first and are synced here.
 Please file issues and PRs against the main repository.
+
+**Where the icon comes from.** Home Assistant 2026.3 and newer reads an
+integration's icon and logo from its own `brand/` folder and serves them at
+`/api/brands/integration/securacv/icon.png`; a local file takes priority over
+the [`home-assistant/brands`](https://github.com/home-assistant/brands) CDN,
+which has no SecuraCV entry (nothing has been submitted there — the brands
+README now points custom components at the in-repo folder, and the monorepo's
+`brands/home-assistant/README.md` records the status). HACS's own `brands`
+validation accepts the same folder, which is why this repository has shipped
+it since August 2026. On Home Assistant older than 2026.3 the folder is not
+read and the integration shows the generic placeholder; the HACS dashboard
+still fetched icons from its own feed when this was written
+([hacs/integration#5171](https://github.com/hacs/integration/issues/5171)),
+so it may show the placeholder too.
 
 **How the mirror is refreshed.** The monorepo's
 [`homeassistant-mirror.yml`](https://github.com/kmay89/securaCV/blob/main/.github/workflows/homeassistant-mirror.yml)
 runs on every `main` commit that touches the carried set —
-`custom_components/securacv/` (minus `brand/`) and the root `conftest.py` —
+`custom_components/securacv/` and the root `conftest.py` —
 copies it here byte-for-byte, proves the copy exact with this repository's own
 [`check_mirror_sync.py`](.github/scripts/check_mirror_sync.py), and opens (or
 force-pushes) one pull request on `bot/mirror-sync`; the tests, hassfest and
@@ -110,7 +122,7 @@ set, it diffs this tree against the monorepo; drift fails the run and prints
 the exact resync commands, and the weekly run additionally raises one
 deduplicated issue. `requirements_test.txt` is owned here (Dependabot
 bumps it in both repositories and this side's pins lead), as are `README.md`,
-`hacs.json`, `brand/`, and the agent briefs ([`AGENTS.md`](AGENTS.md),
+`hacs.json`, and the agent briefs ([`AGENTS.md`](AGENTS.md),
 [`CLAUDE.md`](CLAUDE.md)).
 
 Run the tests standalone:
