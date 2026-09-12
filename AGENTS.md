@@ -11,8 +11,8 @@ monorepo, where the privacy invariants and the dictionary-sync gate live.
 
 | Files | Owner | Rule |
 |---|---|---|
-| `custom_components/securacv/**` (minus `brand/`), `conftest.py` | **The monorepo.** | **Never edit here.** Changes arrive as PRs on `bot/mirror-sync`, opened by the monorepo's `homeassistant-mirror.yml`; [`check_mirror_sync.py`](.github/scripts/check_mirror_sync.py) proves the copy exact and [`mirror-freshness.yml`](.github/workflows/mirror-freshness.yml) is the drift backstop. Fix integration bugs in [`kmay89/securaCV`](https://github.com/kmay89/securaCV) under `custom_components/securacv/`. |
-| `README.md`, `hacs.json`, `LICENSE`, `.github/**`, `custom_components/securacv/brand/`, `requirements_test.txt`, this file, `CLAUDE.md` | **This repo.** | Editable here. `README.md` is the HACS store page (`hacs.json` sets `render_readme`), so it is the most user-facing document in the repo. `requirements_test.txt` is bumped by Dependabot in both repos and this side's pins lead. |
+| `custom_components/securacv/**` (`brand/` included), `conftest.py` | **The monorepo.** | **Never edit here.** Changes arrive as PRs on `bot/mirror-sync`, opened by the monorepo's `homeassistant-mirror.yml`; [`check_mirror_sync.py`](.github/scripts/check_mirror_sync.py) proves the copy exact and [`mirror-freshness.yml`](.github/workflows/mirror-freshness.yml) is the drift backstop. Fix integration bugs in [`kmay89/securaCV`](https://github.com/kmay89/securaCV) under `custom_components/securacv/`. |
+| `README.md`, `hacs.json`, `LICENSE`, `.github/**`, `requirements_test.txt`, this file, `CLAUDE.md` | **This repo.** | Editable here. `README.md` is the HACS store page (`hacs.json` sets `render_readme`), so it is the most user-facing document in the repo. `requirements_test.txt` is bumped by Dependabot in both repos and this side's pins lead. |
 
 ## Voice rules (the monorepo's AGENTS.md is the canonical statement)
 

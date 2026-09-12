@@ -1,8 +1,8 @@
 # Is this HACS mirror still the monorepo's integration?
 #
 # custom_components/securacv/ here is a byte-for-byte copy of the same
-# directory in kmay89/securaCV (plus brand/, which HACS wants), and the root
-# conftest.py is the monorepo's too. The monorepo's
+# directory in kmay89/securaCV (brand/ included — Home Assistant 2026.3+
+# serves the icon from it), and the root conftest.py is the monorepo's too. The monorepo's
 # .github/workflows/homeassistant-mirror.yml is what keeps them that way: on
 # every main commit touching the carried set it copies the set here, proves
 # the copy exact with .github/scripts/check_mirror_sync.py, and opens a PR on
