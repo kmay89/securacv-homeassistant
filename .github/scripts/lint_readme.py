@@ -22,8 +22,10 @@ Three checks, chosen to need no exemption list:
      on every line, fenced samples included — the HACS store page renders
      those too.
   3. No overclaims: the record is tamper-EVIDENT, and the absolute-security
-     phrases the website bans are banned here too. Also checked on every
-     line.
+     phrases the website bans are banned here too. So is "encrypted by
+     default": every Canary ships speaking plain MQTT to the broker, and
+     TLS is opt-in per device. The pattern also matches the negated form,
+     so honest copy says "plain by default". Also checked on every line.
 
 A missing file is an error, not a skip — deleting the HACS store page must
 not read as a clean lint.
@@ -43,14 +45,18 @@ FILES = ["README.md", "AGENTS.md", "CLAUDE.md"]
 
 BIRD = re.compile(r"flock", re.IGNORECASE)
 BIRD_MASK = re.compile(r"flock\(")  # the Unix syscall, a real API name
+ABSOLUTE = "the record is tamper-evident, and absolutes are unbackable"
+PLAIN = ("the Canary-to-broker link is plain MQTT by default and TLS is "
+         "opt-in per device; say \"plain by default\"")
 OVERCLAIMS = [
-    re.compile(r"tamper-?proof", re.IGNORECASE),
-    re.compile(r"\bunhackable\b", re.IGNORECASE),
-    re.compile(r"\b100%\s+(?:secure|private|anonymous)\b", re.IGNORECASE),
-    re.compile(r"\bimpossible\s+to\s+(?:hack|break|breach)\b", re.IGNORECASE),
-    re.compile(r"\bmilitary[- ]grade\b", re.IGNORECASE),
-    re.compile(r"\bcompletely\s+(?:secure|anonymous)\b", re.IGNORECASE),
-    re.compile(r"\bguaranteed\s+privacy\b", re.IGNORECASE),
+    (re.compile(r"tamper-?proof", re.IGNORECASE), ABSOLUTE),
+    (re.compile(r"\bunhackable\b", re.IGNORECASE), ABSOLUTE),
+    (re.compile(r"\b100%\s+(?:secure|private|anonymous)\b", re.IGNORECASE), ABSOLUTE),
+    (re.compile(r"\bimpossible\s+to\s+(?:hack|break|breach)\b", re.IGNORECASE), ABSOLUTE),
+    (re.compile(r"\bmilitary[- ]grade\b", re.IGNORECASE), ABSOLUTE),
+    (re.compile(r"\bcompletely\s+(?:secure|anonymous)\b", re.IGNORECASE), ABSOLUTE),
+    (re.compile(r"\bguaranteed\s+privacy\b", re.IGNORECASE), ABSOLUTE),
+    (re.compile(r"\bencrypted\s+by\s+default\b", re.IGNORECASE), PLAIN),
 ]
 LINK_RE = re.compile(r'!?\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)')
 FENCE_RE = re.compile(r"^(`{3,}|~{3,})")
@@ -115,12 +121,11 @@ def main() -> int:
             if BIRD.search(BIRD_MASK.sub("(", line)):
                 problems.append(f"{name}:{i}: the bird-group word — a group "
                                 "of Canaries is a FLEET")
-            for pat in OVERCLAIMS:
+            for pat, why in OVERCLAIMS:
                 m = pat.search(line)
                 if m:
                     problems.append(f"{name}:{i}: overclaim {m.group(0)!r} — "
-                                    "the record is tamper-evident, and "
-                                    "absolutes are unbackable")
+                                    f"{why}")
             if not in_fence:
                 for m in LINK_RE.finditer(line):
                     raw = m.group(1)
