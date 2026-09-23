@@ -13,6 +13,11 @@ creates:
   chain publish carried an Ed25519 signature that checked against its pinned
   device key — nothing looser; re-verifying a whole log is the kernel app's
   job, and its MQTT discovery adds a **Verify Now** button for that),
+- three actions for
+  [watches](https://github.com/kmay89/securaCV/blob/main/docs/design/watches.md),
+  bounded attention that ends by itself — `securacv.start_watch`,
+  `securacv.end_watch` and `securacv.list_watches`
+  ([how to call them](https://github.com/kmay89/securaCV/blob/main/docs/homeassistant_setup.md#actions)),
 - the Verified Timeline and Aim Lovelace cards (`www/`), registered as
   dashboard resources automatically.
 
@@ -57,6 +62,20 @@ works). The **Automatic** default covers this; your Canaries auto-discover
 within about 30 seconds of connecting — no kernel required. Full walkthrough:
 [Home Assistant setup guide](https://github.com/kmay89/securaCV/blob/main/docs/homeassistant_setup.md).
 
+**Canary to broker: plain by default.** The Canaries speak plain MQTT on
+port `1883` unless you set them up otherwise, so the broker login crosses
+your LAN in the clear. Every Canary except the plain-only nightstand-c6
+display can instead be provisioned for TLS on `8883` — verified against a
+CA certificate you supply, or on most models pinned to the broker
+certificate's SHA-256 fingerprint — from either flasher or the Canary's own
+setup page. The hub plan's `--with broker_tls` opens the broker's TLS
+listener from a certificate and key you place in Home Assistant's `ssl`
+folder (it mints none), and Home Assistant's own MQTT connection stays on
+the internal `1883`. A half-finished TLS setup refuses to connect rather
+than falling back to plain. Honest status: compile-tested by CI and
+host-tested, not yet run against a TLS broker on hardware
+([setup guide, Step 3](https://github.com/kmay89/securaCV/blob/main/docs/homeassistant_setup.md#step-3-configure-the-canary-device)).
+
 **Witnessing cameras (Frigate or standalone)?** That's the Privacy Witness
 Kernel, which runs separately. The easiest way is the Home Assistant **app**
 (older Home Assistant calls these add-ons) from the main repository —
@@ -82,6 +101,21 @@ Timeline** card to a dashboard (edit a dashboard → Add Card → search
 [alert blueprint](https://github.com/kmay89/securaCV/blob/main/docs/homeassistant_setup.md#step-5-set-up-notifications)
 for one-click phone notifications (tamper, smoke/CO heard, chain failure,
 offline).
+
+**Device keys.** Each Canary's signing key is pinned the first time its
+health publish carries one (trust on first use). A publish signed by a
+different key later raises a notification, and that Canary's entities keep
+updating, marked unverified. First sight trusts whoever publishes first, so
+if your threat model includes the broker or another client on it, pin each
+key by hand at **Settings → Devices & Services → SecuraCV → Configure → Pin
+a device pubkey (manual)** and restrict who may publish with broker ACLs
+([setup guide, Step 6](https://github.com/kmay89/securaCV/blob/main/docs/homeassistant_setup.md#step-6-verify-per-device-pki-optional-but-recommended)).
+
+**Apple Home.** Each Canary's **Motion** and **Occupancy** sensors carry
+Home Assistant's standard device classes, so Home Assistant's own HomeKit
+Bridge can put them in the Home app — present-tense state only, never
+video, never identity, and no signature is checked on that hop
+([HomeKit Bridge recipe](https://github.com/kmay89/securaCV/blob/main/docs/integrations/apple-home-homekit-bridge.md)).
 
 ## Development
 
@@ -140,7 +174,9 @@ truth (`spec/witness_dictionary.json`, `docs/voice_sentences_en.yaml`) that
 only exists in [`kmay89/securaCV`](https://github.com/kmay89/securaCV),
 where they run in CI — in a standalone clone of this repository they fail by
 design, so [`tests.yml`](.github/workflows/tests.yml) deselects exactly
-those three rather than editing the byte-mirrored test files.
+those three rather than editing the byte-mirrored test files. A few more
+skip themselves here, each saying why: they read firmware sources this
+repository does not carry, and they run in the monorepo's CI.
 
 ## License
 
