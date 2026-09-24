@@ -64,15 +64,18 @@ within about 30 seconds of connecting — no kernel required. Full walkthrough:
 
 **Canary to broker: plain by default.** The Canaries speak plain MQTT on
 port `1883` unless you set them up otherwise, so the broker login crosses
-your LAN in the clear. Every Canary except the plain-only nightstand-c6
-display can instead be provisioned for TLS on `8883` — verified against a
-CA certificate you supply, or on most models pinned to the broker
-certificate's SHA-256 fingerprint — from either flasher or the Canary's own
-setup page. The hub plan's `--with broker_tls` opens the broker's TLS
-listener from a certificate and key you place in Home Assistant's `ssl`
-folder (it mints none), and Home Assistant's own MQTT connection stays on
-the internal `1883`. A half-finished TLS setup refuses to connect rather
-than falling back to plain. Honest status: compile-tested by CI and
+your LAN in the clear. Every MQTT-speaking Canary except the plain-only
+nightstand-c6 display can instead be provisioned for TLS on `8883` —
+verified against a CA certificate you supply, or on most models pinned to
+the broker certificate's SHA-256 fingerprint — from either flasher or the
+Canary's own setup page. On the broker side, the hub plan's opt-in TLS step
+(`sh provision.sh --with broker_tls` from the Terminal & SSH app) points
+the Mosquitto app at a certificate and key you place in Home Assistant's
+`ssl` folder and restarts it. It mints no certificate and does not check
+that the TLS listener came up (the Mosquitto app's Log tab says why if the
+port stays closed), and Home Assistant's own MQTT connection stays on the
+internal `1883`. A half-finished TLS setup on a Canary refuses to connect
+rather than falling back to plain. Honest status: compile-tested by CI and
 host-tested, not yet run against a TLS broker on hardware
 ([setup guide, Step 3](https://github.com/kmay89/securaCV/blob/main/docs/homeassistant_setup.md#step-3-configure-the-canary-device)).
 
@@ -111,10 +114,15 @@ key by hand at **Settings → Devices & Services → SecuraCV → Configure → 
 a device pubkey (manual)** and restrict who may publish with broker ACLs
 ([setup guide, Step 6](https://github.com/kmay89/securaCV/blob/main/docs/homeassistant_setup.md#step-6-verify-per-device-pki-optional-but-recommended)).
 
-**Apple Home.** Each Canary's **Motion** and **Occupancy** sensors carry
-Home Assistant's standard device classes, so Home Assistant's own HomeKit
-Bridge can put them in the Home app — present-tense state only, never
-video, never identity, and no signature is checked on that hop
+**Apple Home.** A Canary's **Motion** and **Occupancy** sensors (created
+when it first reports an event) carry Home Assistant's standard device
+classes, so Home Assistant's own HomeKit Bridge can put them in the Home
+app — present-tense state only, never video, never identity, and no
+signature is checked on that hop. The lane is also un-paced: Home Assistant
+publishes on change, so what Apple's side sees changes when your events
+happen. In the bridge's filter, a pattern such as
+`binary_sensor.securacv_canary_*_motion` goes under `include_entity_globs`;
+Home Assistant refuses a `*` under `include_entities`
 ([HomeKit Bridge recipe](https://github.com/kmay89/securaCV/blob/main/docs/integrations/apple-home-homekit-bridge.md)).
 
 ## Development
