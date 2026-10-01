@@ -113,6 +113,10 @@ if your threat model includes the broker or another client on it, pin each
 key by hand at **Settings → Devices & Services → SecuraCV → Configure → Pin
 a device pubkey (manual)** and restrict who may publish with broker ACLs
 ([setup guide, Step 6](https://github.com/kmay89/securaCV/blob/main/docs/homeassistant_setup.md#step-6-verify-per-device-pki-optional-but-recommended)).
+The form takes the full public key, which each product shows in a
+different place: the Canary WAP's `/enroll` page, USB serial on the Canary
+and Canary Vision, and the boot log on Canary Sense from the first release
+after 2.4.15 ([where each product shows its key](https://github.com/kmay89/securaCV/blob/main/docs/device_trust.md#where-each-product-shows-its-key)).
 
 **Apple Home.** A Canary's **Motion** and **Occupancy** sensors (created
 when it first reports an event) carry Home Assistant's standard device
