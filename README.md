@@ -1,175 +1,162 @@
 # SecuraCV Home Assistant integration
 
 **Witnessing without watching.** The Home Assistant integration for
-[SecuraCV](https://github.com/kmay89/securaCV) — a local-first witness layer
-that records **what happened** as signed, verifiable events, never footage and
-never identity. It connects Home Assistant to **Canary** witness devices and
-to the **Privacy Witness Kernel** (the signed, hash-chained event log), and
-creates:
+[SecuraCV](https://github.com/kmay89/securaCV), a local-first witness layer
+that records **what happened** as signed events, never footage and never
+identity. It connects Home Assistant to **Canary** witness devices (over
+MQTT) and to the **Privacy Witness Kernel** (the signed, hash-chained event
+log).
 
-- witness event sensors (semantic events — "large object crossed boundary" —
-  never footage, never identity),
-- a chain-integrity sensor per Canary ("verified" means the Canary's latest
-  chain publish carried an Ed25519 signature that checked against its pinned
-  device key — nothing looser; re-verifying a whole log is the kernel app's
-  job, and its MQTT discovery adds a **Verify Now** button for that),
-- three actions for
-  [watches](https://github.com/kmay89/securaCV/blob/main/docs/design/watches.md),
-  bounded attention that ends by itself — `securacv.start_watch`,
+## What it creates
+
+- **A device per Canary**, its entities appearing as the Canary first
+  reports them: Last Event (a semantic event such as "large object crossed
+  boundary"), Witness Count, Chain Length, Health, Online, Motion and
+  Occupancy; Tamper, plus one sensor per tamper type; SD-card wear and GPS
+  fix, which stay empty or read "no fix" on a model without that hardware;
+  and, on the models that report them, radar link and mesh and Chirp status
+  ([full list](https://github.com/kmay89/securaCV/blob/main/docs/homeassistant_setup.md#step-4-verify-discovery)).
+- **Chain Valid** per Canary: on only when the Canary reports its chain
+  intact and that publish carried an Ed25519 signature that checked against
+  its pinned device key. That is what "verified" means here, nothing looser;
+  re-verifying a whole log is the kernel app's job.
+- **A kernel device**, when a kernel is configured: its last event, Online,
+  and storage health, wear, free space and write rate, and SoC temperature.
+- **Two Lovelace cards**, the Verified Timeline and the Aim Camera (a
+  boxes-only aiming view for Canary Vision), loaded automatically, with no
+  dashboard resource to add: edit a dashboard → **Add Card** → search
+  "SecuraCV".
+- **Three actions for
+  [watches](https://github.com/kmay89/securaCV/blob/main/docs/design/watches.md)**,
+  bounded attention that ends by itself: `securacv.start_watch`,
   `securacv.end_watch` and `securacv.list_watches`
-  ([how to call them](https://github.com/kmay89/securaCV/blob/main/docs/homeassistant_setup.md#actions)),
-- the Verified Timeline and Aim Lovelace cards (`www/`), registered as
-  dashboard resources automatically.
+  ([how to call them](https://github.com/kmay89/securaCV/blob/main/docs/homeassistant_setup.md#actions)).
+- **Assist voice answers** with Home Assistant's own conversation agent: "is
+  the fleet OK?", "what did I miss?", "keep an eye on the gate for two
+  weeks". Voice can ask and can start a watch; no sentence arms, disarms,
+  mutes or unseals anything.
+  **One manual step:** copy
+  [`voice_sentences_en.yaml`](https://github.com/kmay89/securaCV/blob/main/docs/voice_sentences_en.yaml)
+  to `/config/custom_sentences/en/securacv.yaml` and restart Home Assistant.
+  Until then Assist does not know the sentences
+  ([voice guide](https://github.com/kmay89/securaCV/blob/main/docs/voice_control.md);
+  its setup wizard copies the file for you).
+- **A Repairs issue** if Home Assistant's MQTT integration is not connected,
+  saying how to fix it.
 
-Two entities you may have seen in screenshots come from the **Privacy Witness
-Kernel add-on's MQTT bridge**, not from this integration: the **Verify Now**
-button (`button.pwk_verify_now`) and the daily-digest sensor
-(`sensor.pwk_daily_digest`) appear only when that bridge runs in daemon mode.
+The **Verify Now** button (`button.pwk_verify_now`) and the daily-digest
+sensor (`sensor.pwk_daily_digest`) come from the Privacy Witness Kernel
+app's MQTT bridge in daemon mode, not from this integration.
 
-## Install
+## Install with HACS
 
-**Fastest (Home Assistant OS):** one narrated, idempotent command from the
-Terminal & SSH app installs and wires the whole stack — broker, Frigate, the
-kernel app, this integration and its config entry, blueprints, dashboards:
+[![Open your Home Assistant instance and add this repository inside HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=kmay89&repository=securacv-homeassistant&category=integration)
+
+1. Add this repository to HACS with the badge above. SecuraCV is not in the
+   default HACS store yet, so by hand it is HACS → **⋮ → Custom
+   repositories** → `https://github.com/kmay89/securacv-homeassistant`, type
+   **Integration**.
+2. Install **SecuraCV** from HACS and restart Home Assistant.
+3. **Settings → Devices & Services → Add Integration → SecuraCV**, and keep
+   the default **"Automatic — detect what's installed"**: it looks for a
+   running kernel and sets up the right mode with nothing to type.
+
+Requires Home Assistant 2024.4.1 or newer and [HACS](https://hacs.xyz). On
+Home Assistant 2026.3 or newer the integration shows its own icon, served
+from its bundled `brand/` folder. Older versions show the generic
+placeholder (the [brands](https://github.com/home-assistant/brands) CDN has
+no SecuraCV entry), and so may the HACS dashboard, which fetched icons from
+its own feed when this was written
+([hacs/integration#5171](https://github.com/hacs/integration/issues/5171)).
+
+**The whole stack in one command (Home Assistant OS).** From the Terminal &
+SSH app, this narrated, idempotent script installs the broker, Frigate, the
+kernel app, this integration and its config entry, blueprints and
+dashboards:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kmay89/securaCV/main/scripts/install.sh | bash
 ```
 
-**By hand:**
-
-[![Open your Home Assistant instance and add this repository inside HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=kmay89&repository=securacv-homeassistant&category=integration)
-
-The badge adds this repository to HACS in one click (SecuraCV is not in the
-default HACS store yet). Or manually: HACS → **⋮ → Custom repositories** → add
-`https://github.com/kmay89/securacv-homeassistant` as an **Integration**.
-
-Then install **SecuraCV** from HACS, restart Home Assistant, go to
-**Settings → Devices & Services → Add Integration → SecuraCV**, and keep the
-default **"Automatic — detect what's installed"** — it probes for a running
-kernel and configures the right mode with nothing to type.
-
-Requires Home Assistant 2024.4.1 or newer, with [HACS](https://hacs.xyz)
-installed. On Home Assistant 2026.3 or newer the integration shows its own
-icon — Home Assistant serves it from the bundled
-`custom_components/securacv/brand/` folder; older versions do not read that
-folder and show the generic placeholder.
-
 ## Which setup do you need?
 
-**Have Canary devices?** You only need an MQTT broker (the Mosquitto app
-works). The **Automatic** default covers this; your Canaries auto-discover
-within about 30 seconds of connecting — no kernel required. Full walkthrough:
-[Home Assistant setup guide](https://github.com/kmay89/securaCV/blob/main/docs/homeassistant_setup.md).
+**Canary devices** need only an MQTT broker (the Mosquitto app works); no
+kernel. They are discovered within about 30 seconds of connecting
+([setup guide](https://github.com/kmay89/securaCV/blob/main/docs/homeassistant_setup.md)).
 
-**Canary to broker: plain by default.** The Canaries speak plain MQTT on
-port `1883` unless you set them up otherwise, so the broker login crosses
-your LAN in the clear. Every MQTT-speaking Canary except the plain-only
-nightstand-c6 display can instead be provisioned for TLS on `8883` —
-verified against a CA certificate you supply, or on most models pinned to
-the broker certificate's SHA-256 fingerprint — from either flasher or the
-Canary's own setup page. On the broker side, the hub plan's opt-in TLS step
-(`sh provision.sh --with broker_tls` from the Terminal & SSH app) points
-the Mosquitto app at a certificate and key you place in Home Assistant's
-`ssl` folder and restarts it. It mints no certificate and does not check
-that the TLS listener came up (the Mosquitto app's Log tab says why if the
-port stays closed), and Home Assistant's own MQTT connection stays on the
-internal `1883`. A half-finished TLS setup on a Canary refuses to connect
-rather than falling back to plain. Honest status: compile-tested by CI and
-host-tested, not yet run against a TLS broker on hardware
-([setup guide, Step 3](https://github.com/kmay89/securaCV/blob/main/docs/homeassistant_setup.md#step-3-configure-the-canary-device)).
+**Cameras (Frigate or standalone)** are witnessed by the Privacy Witness
+Kernel, which runs separately: as a Home Assistant app
+([add the app repository](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fkmay89%2FsecuraCV)),
+a Docker container or a service
+([quick start](https://github.com/kmay89/securaCV/blob/main/docs/homeassistant_setup.md#quick-start-one-command)).
+Running both at once is supported; the app announces itself, so the
+integration shows up as discovered.
 
-**Witnessing cameras (Frigate or standalone)?** That's the Privacy Witness
-Kernel, which runs separately. The easiest way is the Home Assistant **app**
-(older Home Assistant calls these add-ons) from the main repository —
-[add the app repository in one click](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fkmay89%2FsecuraCV)
-— or run it as a Docker container or service. See the
-[one-command quick start](https://github.com/kmay89/securaCV/blob/main/docs/homeassistant_setup.md#quick-start-one-command).
-
-Running both at once is fully supported — the **Automatic** mode picks it
-when a kernel answers, and the app announces itself to Home Assistant so the
-integration appears as a discovered card on its own.
+**Canary to broker is plain by default.** Canaries speak plain MQTT on port
+`1883`, so the broker login crosses your LAN in the clear. Every
+MQTT-speaking Canary except the nightstand-c6 display can be provisioned
+for TLS on `8883` from either flasher or its own setup page, checked against
+a CA certificate you supply or, on most models, pinned to the broker
+certificate's SHA-256 fingerprint. A half-finished TLS setup refuses to
+connect rather than falling back to plain. On the broker side, the hub
+plan's opt-in `sh provision.sh --with broker_tls` points the Mosquitto app
+at a certificate and key you place in Home Assistant's `ssl` folder; it
+mints no certificate and does not check that the listener came up, and Home
+Assistant's own MQTT connection stays on the internal `1883`. Honest status:
+compile-tested by CI and host-tested, not yet run against a TLS broker on
+hardware
+([Step 3](https://github.com/kmay89/securaCV/blob/main/docs/homeassistant_setup.md#step-3-configure-the-canary-device)).
 
 ## Configuration
 
-Everything is a UI config flow — no YAML required. The integration supports
-MQTT (Canary devices), the kernel's Event API, or both. For the Event API,
-prefer the rotating **token file** (the kernel app writes it to
-`/config/api_token`); the integration re-reads it automatically when the token
-rotates.
-
-After setup, two things are worth a minute each: add the **SecuraCV Verified
-Timeline** card to a dashboard (edit a dashboard → Add Card → search
-"SecuraCV") for the verified-✓ event timeline, and import the
+Setup is a UI config flow, with no YAML to write. For the kernel's Event
+API, use the rotating **token file** the kernel app writes to
+`/config/api_token`; the integration re-reads it when the token rotates.
+Import the
 [alert blueprint](https://github.com/kmay89/securaCV/blob/main/docs/homeassistant_setup.md#step-5-set-up-notifications)
-for one-click phone notifications (tamper, smoke/CO heard, chain failure,
-offline).
+for phone notifications on tamper, smoke or CO heard, chain failure and
+offline.
 
 **Device keys.** Each Canary's signing key is pinned the first time its
 health publish carries one (trust on first use). A publish signed by a
 different key later raises a notification, and that Canary's entities keep
-updating, marked unverified. First sight trusts whoever publishes first, so
-if your threat model includes the broker or another client on it, pin each
-key by hand at **Settings → Devices & Services → SecuraCV → Configure → Pin
-a device pubkey (manual)** and restrict who may publish with broker ACLs
-([setup guide, Step 6](https://github.com/kmay89/securaCV/blob/main/docs/homeassistant_setup.md#step-6-verify-per-device-pki-optional-but-recommended)).
-The form takes the full public key, which each product shows in a
-different place: the Canary WAP's `/enroll` page, USB serial on the Canary
-and Canary Vision, and the boot log on Canary Sense from the first release
-after 2.4.15 ([where each product shows its key](https://github.com/kmay89/securaCV/blob/main/docs/device_trust.md#where-each-product-shows-its-key)).
+updating, marked unverified. If your threat model includes the broker or
+another client on it, pin each key by hand (**Settings → Devices &
+Services → SecuraCV → Configure → Pin a device pubkey (manual)**) and
+restrict publishing with broker ACLs
+([Step 6](https://github.com/kmay89/securaCV/blob/main/docs/homeassistant_setup.md#step-6-verify-per-device-pki-optional-but-recommended);
+[where each product shows its key](https://github.com/kmay89/securaCV/blob/main/docs/device_trust.md#where-each-product-shows-its-key)).
 
-**Apple Home.** A Canary's **Motion** and **Occupancy** sensors (created
-when it first reports an event) carry Home Assistant's standard device
-classes, so Home Assistant's own HomeKit Bridge can put them in the Home
-app — present-tense state only, never video, never identity, and no
-signature is checked on that hop. The lane is also un-paced: Home Assistant
-publishes on change, so what Apple's side sees changes when your events
-happen. In the bridge's filter, a pattern such as
-`binary_sensor.securacv_canary_*_motion` goes under `include_entity_globs`;
-Home Assistant refuses a `*` under `include_entities`
-([HomeKit Bridge recipe](https://github.com/kmay89/securaCV/blob/main/docs/integrations/apple-home-homekit-bridge.md)).
+**Apple Home.** The **Motion** and **Occupancy** sensors carry standard
+device classes, so Home Assistant's HomeKit Bridge can show them in the Home
+app: present-tense state only, never video, never identity, with no
+signature checked on that hop, and changes reach Apple's side as your events
+happen. Match them with `binary_sensor.securacv_canary_*_motion` under
+`include_entity_globs`; Home Assistant refuses a `*` under
+`include_entities`
+([recipe](https://github.com/kmay89/securaCV/blob/main/docs/integrations/apple-home-homekit-bridge.md)).
 
 ## Development
 
-This repository is the **distribution home** for the integration: everything
-under `custom_components/securacv/` — the bundled `brand/` icon included —
-and the root `conftest.py` are byte-identical to the monorepo,
+This repository distributes the integration. Everything under
+`custom_components/securacv/` (the `brand/` icon included) and the root
+`conftest.py` are byte-identical copies from
 [`kmay89/securaCV`](https://github.com/kmay89/securaCV), where development
-happens (under `custom_components/securacv/`, beside the privacy invariants
-and the dictionary-sync gate). Changes land there first and are synced here.
-Please file issues and PRs against the main repository.
+happens. Please file issues and PRs there.
 
-**Where the icon comes from.** Home Assistant 2026.3 and newer reads an
-integration's icon and logo from its own `brand/` folder and serves them at
-`/api/brands/integration/securacv/icon.png`; a local file takes priority over
-the [`home-assistant/brands`](https://github.com/home-assistant/brands) CDN,
-which has no SecuraCV entry (nothing has been submitted there — the brands
-README now points custom components at the in-repo folder, and the monorepo's
-`brands/home-assistant/README.md` records the status). HACS's own `brands`
-validation accepts the same folder, which is why this repository has shipped
-it since August 2026. On Home Assistant older than 2026.3 the folder is not
-read and the integration shows the generic placeholder; the HACS dashboard
-still fetched icons from its own feed when this was written
-([hacs/integration#5171](https://github.com/hacs/integration/issues/5171)),
-so it may show the placeholder too.
-
-**How the mirror is refreshed.** The monorepo's
+The monorepo's
 [`homeassistant-mirror.yml`](https://github.com/kmay89/securaCV/blob/main/.github/workflows/homeassistant-mirror.yml)
-runs on every `main` commit that touches the carried set —
-`custom_components/securacv/` and the root `conftest.py` —
-copies it here byte-for-byte, proves the copy exact with this repository's own
-[`check_mirror_sync.py`](.github/scripts/check_mirror_sync.py), and opens (or
-force-pushes) one pull request on `bot/mirror-sync`; the tests, hassfest and
-the freshness check run on that PR before it merges. It needs a `MIRROR_PAT`
-secret in the monorepo; without one it stays green and raises an issue there.
-[`mirror-freshness.yml`](.github/workflows/mirror-freshness.yml) is the
-backstop — weekly, and on pushes to `main` and PRs that touch the carried
-set, it diffs this tree against the monorepo; drift fails the run and prints
-the exact resync commands, and the weekly run additionally raises one
-deduplicated issue. `requirements_test.txt` is owned here (Dependabot
-bumps it in both repositories and this side's pins lead), as are `README.md`,
-`hacs.json`, and the agent briefs ([`AGENTS.md`](AGENTS.md),
-[`CLAUDE.md`](CLAUDE.md)).
+copies that set here on every `main` commit that touches it, proves the copy
+exact with [`check_mirror_sync.py`](.github/scripts/check_mirror_sync.py),
+and opens one pull request on `bot/mirror-sync`. It needs a `MIRROR_PAT`
+secret in the monorepo; without one it stays green and raises an issue
+there. [`mirror-freshness.yml`](.github/workflows/mirror-freshness.yml) is
+the backstop: it diffs this tree against the monorepo weekly and on every
+change to the carried set, and fails on drift with the exact resync
+commands. Its weekly run raises one drift issue, and the first passing run
+on `main` closes it. `README.md`, `hacs.json`, `requirements_test.txt` and
+the agent briefs ([`AGENTS.md`](AGENTS.md), [`CLAUDE.md`](CLAUDE.md)) are
+owned here.
 
 Run the tests standalone:
 
@@ -181,14 +168,11 @@ pytest custom_components/securacv/tests -q \
   --deselect custom_components/securacv/tests/test_voice.py::test_sentences_yaml_matches_registered_intents
 ```
 
-The three deselected tests check the integration against monorepo ground
-truth (`spec/witness_dictionary.json`, `docs/voice_sentences_en.yaml`) that
-only exists in [`kmay89/securaCV`](https://github.com/kmay89/securaCV),
-where they run in CI — in a standalone clone of this repository they fail by
-design, so [`tests.yml`](.github/workflows/tests.yml) deselects exactly
-those three rather than editing the byte-mirrored test files. A few more
-skip themselves here, each saying why: they read firmware sources this
-repository does not carry, and they run in the monorepo's CI.
+The three deselected tests read monorepo files
+(`spec/witness_dictionary.json`, `docs/voice_sentences_en.yaml`) and run in
+the monorepo's CI; a few more skip themselves here, each saying why.
+[`tests.yml`](.github/workflows/tests.yml) also runs the pinned ruff and
+mypy with the monorepo's lint config.
 
 ## License
 

@@ -12,7 +12,9 @@
 # that touches the carried set, and weekly on a schedule, sparse-clone the
 # integration from the monorepo and diff. Drift fails the run and prints the
 # copy commands; the weekly run additionally raises ONE deduplicated issue
-# so a fix that landed upstream cannot sit unmirrored for weeks unnoticed.
+# so a fix that landed upstream cannot sit unmirrored for weeks unnoticed,
+# and the first run on main that passes again closes it, so an open issue is
+# drift that no run on main has seen fixed yet.
 name: mirror freshness
 
 on:
@@ -35,11 +37,15 @@ on:
 
 permissions:
   contents: read
-  # the scheduled run raises a deduplicated issue on drift
+  # the scheduled run raises a deduplicated issue on drift, and a passing run
+  # on main closes it
   issues: write
 
+# PRs collapse per branch, and a new push supersedes the in-flight run; each
+# main commit gets its own group, so a burst of merges can never evict the
+# main run queued behind another (.github/CI.md R3). Main is never canceled.
 concurrency:
-  group: mirror-freshness-${{ github.ref }}
+  group: mirror-freshness-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -92,9 +98,33 @@ jobs:
           TITLE="HACS mirror has drifted from kmay89/securaCV"
           OPEN=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number --jq '.[].number' | head -1)
           RUN="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          BODY_TAIL=$'\n\n'"Raised by \`mirror-freshness.yml\`; this issue is reused while it stays open."
+          BODY_TAIL=$'\n\n'"Raised by \`mirror-freshness.yml\`; this issue is reused while it stays open, and the first passing run on \`main\` closes it."
           if [ -n "$OPEN" ]; then
             gh issue comment "$OPEN" --body "Still drifted on $(date -u +%Y-%m-%d) — see the run log for the copy commands: $RUN"
           else
             gh issue create --title "$TITLE" --body "The weekly mirror-freshness check found that \`custom_components/securacv/\` here no longer matches the monorepo's copy. The run log lists every DIFFERENT / MISSING / EXTRA file and the exact \`cp\` commands to resync: ${RUN}${BODY_TAIL}"
           fi
+      - name: Close the drift issue once the mirror matches again
+        # The issue is where a human looks, so it must not outlive the drift:
+        # #13 stayed open for weeks after a hand resync made the mirror match.
+        # Any run on main that passes (the weekly one, a push, a dispatch)
+        # proves the mirror equals the monorepo's main, so it closes the issue
+        # with a link to itself. A PR run proves nothing about main (it may
+        # have matched a monorepo branch instead), so it never closes one.
+        if: success() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: HACS mirror has drifted from kmay89/securaCV
+        run: |
+          RUN="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          # Same search the raise step uses, narrowed to the exact title.
+          if ! OPEN=$(gh issue list --state open --search "\"$TITLE\" in:title" \
+                --json number,title --jq '.[] | select(.title == env.TITLE) | .number'); then
+            echo "::warning::could not list open issues; if a drift issue is open, close it by hand — the mirror matches."
+            exit 0
+          fi
+          for n in $OPEN; do
+            gh issue close "$n" --reason completed \
+              --comment "Back in sync on $(date -u +%Y-%m-%d): $RUN" \
+              || echo "::warning::could not close #$n — close it by hand; the mirror matches."
+          done

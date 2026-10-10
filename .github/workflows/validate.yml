@@ -31,10 +31,11 @@ on:
 permissions:
   contents: read
 
-# A new push to a PR branch supersedes the in-flight run; main is never
-# canceled.
+# PRs collapse per branch, and a new push supersedes the in-flight run; each
+# main commit gets its own group, so a burst of merges can never evict the
+# main run queued behind another (.github/CI.md R3). Main is never canceled.
 concurrency:
-  group: validate-${{ github.ref }}
+  group: validate-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -60,7 +61,7 @@ jobs:
       - uses: actions/checkout@v7
       # Same SHA pin as the monorepo's .github/workflows/validate.yml — bump
       # both together.
-      - uses: home-assistant/actions/hassfest@06749dd8c0b54f350bc69c8752456cee498808a3 # master
+      - uses: home-assistant/actions/hassfest@06749dd8c0b54f350bc69c8752456cee498808a3 # master @ 2026-05-28
 
   hacs:
     name: HACS
@@ -70,7 +71,7 @@ jobs:
       - uses: actions/checkout@v7
       # Same SHA pin as the monorepo's .github/workflows/validate.yml — bump
       # both together.
-      - uses: hacs/action@d556e736723344f83838d08488c983a15381059a # main
+      - uses: hacs/action@d556e736723344f83838d08488c983a15381059a # 22.5.0
         with:
           category: integration
           # "topics" is repository metadata only an admin can set (GitHub →
