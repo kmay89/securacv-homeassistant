@@ -17,7 +17,14 @@ an exemption must be visible and reviewable, with a comment saying why):
       `concurrency` group (supersede stale PR runs; queue — never
       cancel — release publishes); a workflow that fires on tag pushes
       or release events must not set a bare `cancel-in-progress: true`
-      (a run canceled mid-publish leaves half-uploaded assets)
+      (a run canceled mid-publish leaves half-uploaded assets); a
+      workflow that tests branch pushes gives each commit its own group
+      (`github.sha` in the group name) — `cancel-in-progress: false`
+      only protects the RUNNING run, GitHub keeps one PENDING run per
+      group, and a third arrival evicts the one waiting, so with a
+      shared per-ref group a main commit can go unchecked while merely
+      looking queued (publishers that must run in order are listed in
+      `main_queue_ok`)
   R4  every action ref is pinned to a tag or SHA — never a mutable
       branch ref (@main/@master) or a floating docker :latest
   R5  pull_request workflows are path-filtered so unrelated PRs don't
@@ -199,6 +206,30 @@ def check_workflow(path: str, policy: dict) -> list[str]:
             f"Use `${{{{ github.event_name == 'pull_request' }}}}` to "
             f"supersede PR runs without ever canceling main, or exempt in "
             f"branch_cancel_ok with a reason."
+        )
+
+    # R3 (eviction half) — `cancel-in-progress: false` promises only not to
+    # cancel the RUNNING run. GitHub keeps at most one PENDING run per group,
+    # so with a shared per-ref group and commits landing faster than the run
+    # takes, each new commit evicts the one waiting behind it — a merged
+    # commit whose check never ran, reading as housekeeping ("canceled"). So a
+    # workflow that runs on branch pushes gives each commit its own group by
+    # putting github.sha in the group name. Ported from the monorepo's checker
+    # (kmay89/securaCV .github/scripts/ci_policy_check.py), which found it the
+    # hard way; publishers whose runs must land in order keep one group per
+    # ref and are listed in main_queue_ok with a reason — a superseded publish
+    # is replaced by a newer one, which is fine; a superseded test is a gap.
+    if (fires_on_branch and isinstance(conc, dict)
+            and name not in set(policy.get("main_queue_ok") or [])
+            and "github.sha" not in str(conc.get("group", ""))):
+        problems.append(
+            f"{name}: R3 — runs on branch pushes with a shared per-ref "
+            f"concurrency group, so a burst of merges evicts the pending main "
+            f"run (GitHub queues one run per group). Give each commit its own "
+            f"group: `group: <name>-${{{{ github.ref }}}}-${{{{ "
+            f"github.event_name == 'pull_request' && 'pr' || github.sha }}}}`, "
+            f"or — only for a publisher that must run in order — exempt in "
+            f"main_queue_ok with a reason."
         )
 
     # R4/R8 — pinned action refs, in workflows AND composite actions (collected

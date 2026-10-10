@@ -12,7 +12,7 @@ monorepo, where the privacy invariants and the dictionary-sync gate live.
 | Files | Owner | Rule |
 |---|---|---|
 | `custom_components/securacv/**` (`brand/` included), `conftest.py` | **The monorepo.** | **Never edit here.** Changes arrive as PRs on `bot/mirror-sync`, opened by the monorepo's `homeassistant-mirror.yml`; [`check_mirror_sync.py`](.github/scripts/check_mirror_sync.py) proves the copy exact and [`mirror-freshness.yml`](.github/workflows/mirror-freshness.yml) is the drift backstop. Fix integration bugs in [`kmay89/securaCV`](https://github.com/kmay89/securaCV) under `custom_components/securacv/`. |
-| `README.md`, `hacs.json`, `LICENSE`, `.github/**`, `requirements_test.txt`, this file, `CLAUDE.md` | **This repo.** | Editable here. `README.md` is the HACS store page (`hacs.json` sets `render_readme`), so it is the most user-facing document in the repo. `requirements_test.txt` is bumped by Dependabot in both repos and this side's pins lead. |
+| `README.md`, `hacs.json`, `LICENSE`, `.github/**`, `requirements_test.txt`, this file, `CLAUDE.md` | **This repo.** | Editable here. `README.md` is the HACS store page (`hacs.json` sets `render_readme`), so it is the most user-facing document in the repo. `requirements_test.txt` is bumped by Dependabot in both repos and this side's pins lead; [`tests.yml`](.github/workflows/tests.yml) runs its ruff and mypy pins with the monorepo's lint config, so a bump is checked here. |
 
 ## Voice rules (the monorepo's AGENTS.md is the canonical statement)
 
@@ -45,9 +45,19 @@ pytest custom_components/securacv/tests -q \
 
 (The three deselected tests need monorepo ground-truth files and fail by
 design in a standalone clone — [`tests.yml`](.github/workflows/tests.yml)
-deselects exactly the same three.) If you touched a workflow, also run
-`python3 .github/scripts/ci_policy_check.py` (needs `pyyaml`); the ground
-rules are in [`.github/CI.md`](.github/CI.md).
+deselects exactly the same three.) If you bumped the ruff or mypy pin,
+lint with the monorepo's config, as `tests.yml` does, from a sibling
+monorepo checkout:
+
+```sh
+ruff check --config ../securaCV/pyproject.toml custom_components/securacv
+mypy --config-file ../securaCV/pyproject.toml custom_components/securacv
+```
+
+If you touched a workflow, also run
+`python3 .github/scripts/ci_policy_check.py` (needs `pyyaml`) and
+`python3 -m unittest discover -s .github/scripts -p 'test_*.py'`; the
+ground rules are in [`.github/CI.md`](.github/CI.md).
 
 File issues and PRs about integration *behavior* against the main
 repository — this one only distributes it.

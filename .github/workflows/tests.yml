@@ -19,10 +19,11 @@ on:
 permissions:
   contents: read
 
-# A new push to a PR branch supersedes the in-flight run; main is never
-# canceled.
+# PRs collapse per branch, and a new push supersedes the in-flight run; each
+# main commit gets its own group, so a burst of merges can never evict the
+# main run queued behind another (.github/CI.md R3). Main is never canceled.
 concurrency:
-  group: tests-${{ github.ref }}
+  group: tests-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -51,3 +52,40 @@ jobs:
           --deselect custom_components/securacv/tests/test_homekit_projection.py::test_mirror_matches_the_dictionary
           --deselect custom_components/securacv/tests/test_homekit_projection.py::test_hold_window_is_sane
           --deselect custom_components/securacv/tests/test_voice.py::test_sentences_yaml_matches_registered_intents
+
+  lint:
+    # requirements_test.txt pins ruff and mypy, and Dependabot bumps them here
+    # first (this side's pins lead), so a bump has to be exercised here rather
+    # than first in the monorepo. The CONFIG is the monorepo's: its
+    # pyproject.toml holds [tool.ruff] and [tool.mypy] and is not carried, so
+    # it is read from kmay89/securaCV main instead of kept as a copy that
+    # could drift. Same config and interpreter as the monorepo's python.yml,
+    # and its pins except while a bump here leads. Without that config, ruff's
+    # defaults (wider than the monorepo's `select`) and a bare mypy report
+    # findings the monorepo's gate never asked for. A PR here that leads the monorepo is linted against
+    # main's config; mirror-freshness already says to merge the monorepo first.
+    name: ruff + mypy (the monorepo's config)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          # python.yml lints on 3.11, the floor of the monorepo's
+          # requires-python, and mypy's python_version there is 3.11 too.
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements_test.txt
+      - run: pip install -r requirements_test.txt
+      - name: Fetch the monorepo's lint config (pyproject.toml on main)
+        run: >
+          curl -fsSL --retry 3
+          -o "$RUNNER_TEMP/pyproject.toml"
+          https://raw.githubusercontent.com/kmay89/securaCV/main/pyproject.toml
+      - name: Ruff (lint)
+        run: ruff check --config "$RUNNER_TEMP/pyproject.toml" custom_components/securacv
+      - name: Mypy (type-check)
+        # Paths on the command line, so the config's `files` (relative to
+        # the monorepo root) is not consulted; module names still root at
+        # `securacv`, which is what its overrides name.
+        run: mypy --config-file "$RUNNER_TEMP/pyproject.toml" custom_components/securacv

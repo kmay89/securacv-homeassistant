@@ -9,7 +9,8 @@ name: Workflow Lint
 #     rules in .github/CI.md (permissions, timeouts, concurrency, pinned
 #     actions, path filters) on every workflow, current and FUTURE. New
 #     workflows can't regress the conventions; exemptions live in
-#     .github/ci-policy.yml where review can see them.
+#     .github/ci-policy.yml where review can see them. Its unit tests
+#     (test_ci_policy_check.py) pin what each rule counts.
 on:
   push:
     branches: [main]
@@ -28,8 +29,11 @@ on:
 permissions:
   contents: read
 
+# PRs collapse per branch, and a new push supersedes the in-flight run; each
+# main commit gets its own group, so a burst of merges can never evict the
+# main run queued behind another (.github/CI.md R3). Main is never canceled.
 concurrency:
-  group: workflows-lint-${{ github.ref }}
+  group: workflows-lint-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -56,3 +60,5 @@ jobs:
         run: python3 -m pip install --quiet pyyaml
       - name: Enforce the CI ground rules on every workflow
         run: python3 .github/scripts/ci_policy_check.py
+      - name: The checker's own tests
+        run: python3 -m unittest discover -s .github/scripts -p 'test_*.py' -v
