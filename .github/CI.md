@@ -39,9 +39,10 @@ Repo-specific conventions:
   first run on `main` that finds no drift closes it. Both issue steps read
   the Compare step's outcome, nothing else: the workflow's last step checks
   the store page's links into the monorepo (`lint_readme.py --source`,
-  against the same sparse clone, which therefore carries `docs/` and
-  `.github/workflows/`), and a broken link fails that step without
-  touching the drift issue. A PR that touches only `README.md`,
+  against the same sparse clone, which therefore carries `docs/`,
+  `scripts/` and `.github/workflows/`), and a broken link fails that step
+  without touching the drift issue. `workflows-lint.yml` also triggers on
+  `README.md`, `AGENTS.md` and `CLAUDE.md`: the tests it runs read them. A PR that touches only `README.md`,
   `AGENTS.md`, `CLAUDE.md` or `lint_readme.py` runs the link step and
   skips Compare: the mirror can lag the monorepo for reasons that PR did
   not cause.

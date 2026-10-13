@@ -243,9 +243,10 @@ the backstop: it diffs this tree against the monorepo weekly and on every
 change to the carried set, and fails on drift with the exact resync
 commands. Its weekly run raises one drift issue, and the first run on
 `main` that finds no drift closes it. The same run checks, in a step of its
-own, that every link on this page into the monorepo still lands on a file
-that exists there and, for a link to a heading, on that heading; a broken
-link fails that step and neither raises nor holds open a drift issue.
+own, that every URL on this page into the monorepo, the links and the
+one-command installer alike, still lands on a file that exists there and,
+for a link to a heading, on that heading; a broken one fails that step and
+neither raises nor holds open a drift issue.
 `README.md`, `hacs.json`, `requirements_test.txt` and
 the agent briefs ([`AGENTS.md`](AGENTS.md), [`CLAUDE.md`](CLAUDE.md)) are
 owned here.

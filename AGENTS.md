@@ -47,9 +47,10 @@ pytest custom_components/securacv/tests -q \
 (The three deselected tests need monorepo ground-truth files and fail by
 design in a standalone clone — [`tests.yml`](.github/workflows/tests.yml)
 deselects exactly the same three.) The `--source` line needs a sibling
-checkout of the monorepo's `main`: it checks that every link the store page
-makes into `kmay89/securaCV` lands on a file that exists and, for a
-`#anchor`, on a heading GitHub would generate there. A heading renamed
+checkout of the monorepo's `main`: it checks that every URL the store page
+and these briefs write into `kmay89/securaCV` (links, code and the
+installer command in its fence alike) lands on a file that exists and, for
+a `#anchor`, on a heading GitHub would generate there. A heading renamed
 upstream breaks the HACS page silently otherwise;
 [`mirror-freshness.yml`](.github/workflows/mirror-freshness.yml) runs the
 same check weekly, as its own step. If you bumped the ruff or mypy pin,
