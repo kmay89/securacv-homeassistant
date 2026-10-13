@@ -63,7 +63,8 @@ own reason):
     checked.
   * The file or directory must exist at that path. A path git knows but
     the sparse checkout left off disk is named as such, so a link that
-    outgrows mirror-freshness.yml's sparse set says how to fix it.
+    outgrows mirror-freshness.yml's sparse set says how to fix it (and one
+    deleted from a local working tree is not mistaken for that).
   * A heading anchor must match a heading slug computed the way GitHub
     computes it for Markdown (github_slug(), below), or an explicit HTML
     id/name anchor; on a directory it is read in the README GitHub renders
@@ -512,19 +513,27 @@ def _readme_in(directory: Path, root: bool = False):
 
 
 def _sparse_hint(source: Path, path: str) -> str:
-    """Say so when git has the path but the sparse checkout left it off."""
+    """Say why a path git tracks is not on disk: the sparse checkout left
+    it off (its index entries carry the skip-worktree bit, tag "S"), or it
+    was deleted or moved in this working tree and not committed."""
     if not path or not (source / ".git").exists():
         return ""
     try:
         out = subprocess.run(
-            ["git", "-C", str(source), "ls-tree", "--name-only", "HEAD",
-             "--", path], capture_output=True, text=True, timeout=60)
+            ["git", "--literal-pathspecs", "-C", str(source), "ls-files",
+             "-t", "--", path], capture_output=True, text=True, timeout=60)
     except (OSError, subprocess.SubprocessError):
         return ""
-    if out.returncode == 0 and out.stdout.strip():
-        return (" on disk, though git has it at HEAD: it is outside the "
-                "sparse checkout (widen the sparse-checkout set in "
+    if out.returncode != 0:
+        return ""
+    tags = {line[:1] for line in out.stdout.splitlines() if line}
+    if "S" in tags:
+        return (" on disk, though git has it: it is outside the sparse "
+                "checkout (widen the sparse-checkout set in "
                 "mirror-freshness.yml)")
+    if tags:
+        return (" on disk, though git tracks it: deleted or moved in this "
+                "working tree and not committed")
     return ""
 
 

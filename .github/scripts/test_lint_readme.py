@@ -394,6 +394,25 @@ class Resolver(unittest.TestCase):
         self.assertIn("outside the sparse checkout",
                       self.why(f"{REPO}/blob/main/spec/dictionary.md"))
         self.assertNotIn("sparse", self.why(f"{REPO}/blob/main/spec/never.md"))
+        # A directory left off is named the same way.
+        self.assertIn("outside the sparse checkout",
+                      self.why(f"{REPO}/tree/main/spec"))
+
+    @unittest.skipUnless(shutil.which("git"), "needs git")
+    def test_a_file_deleted_from_a_full_checkout_is_not_called_sparse(self):
+        # A local run against a working checkout: the doc was moved or
+        # deleted and not committed. git still has it at HEAD, but nothing
+        # left it off on purpose, so "widen the sparse set" would mislead.
+        for args in (("init", "-q"), ("add", "-A"),
+                     ("commit", "-q", "-m", "fixture")):
+            subprocess.run(["git", "-C", str(self.src), "-c", "user.name=t",
+                            "-c", "user.email=t@example.invalid", *args],
+                           check=True, capture_output=True)
+        (self.src / "docs" / "data.yaml").unlink()
+        why = self.why(f"{REPO}/blob/main/docs/data.yaml")
+        self.assertIn("no such file", why)
+        self.assertNotIn("sparse", why)
+        self.assertIn("not committed", why)
 
 
 class StorePage(unittest.TestCase):
