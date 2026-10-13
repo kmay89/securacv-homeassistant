@@ -38,9 +38,15 @@ Three checks in the default mode, chosen to need no exemption list:
 A missing file is an error, not a skip — deleting the HACS store page must
 not read as a clean lint.
 
-US-spelling is deliberately NOT re-enumerated here: two independently
-maintained ban lists (monorepo, website) already exist and disagree at the
-edges — a third would compound the drift. From a monorepo checkout run
+US-spelling is deliberately NOT re-enumerated here. The one list this repo
+follows is the monorepo's scripts/lint_spelling.py: its WORD_LIST, and the
+US-stem FAMILIES that family_pairs() expands into every banned form. The
+website's spelling test is the other copy and agrees with it: the families
+were ported from it stem for stem (kmay89/securaCV#1802, sweep item CI9,
+from website commit 32fa634), the two word lists hold the same entries, and
+the monorepo pins the port to that commit by a digest in
+scripts/tests/test_lint_spelling.py. A copy here would only be one more to
+keep in step. From a monorepo checkout run
 `python3 scripts/lint_spelling.py /path/to/this/repo/README.md` instead.
 
 --source MODE: THE LINKS INTO kmay89/securaCV. The store page sends readers
