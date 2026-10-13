@@ -22,7 +22,10 @@
 # exists and the #anchor names a real heading (.github/scripts/lint_readme.py
 # --source). A heading renamed upstream fails that step, weekly and on any PR
 # that touches the store page or the script. It never raises or closes the
-# drift issue: those two steps read the Compare step's outcome alone.
+# drift issue: those two steps read the Compare step's outcome alone. A PR
+# that touches only the store page, the agent briefs or the script skips
+# Compare (the gate step says why), so drift it did not cause cannot turn it
+# red; the link step still runs.
 name: mirror freshness
 
 on:
@@ -71,6 +74,28 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          # the parents of a PR's merge commit, for the carried-set gate below
+          fetch-depth: 2
+      - name: Does this PR touch the carried set?
+        # README.md, AGENTS.md, CLAUDE.md and lint_readme.py trigger this
+        # workflow for the link step alone. A PR that changes only those must
+        # not go red for drift it did not cause (the mirror lags the monorepo
+        # between a monorepo merge and the bot/mirror-sync PR), so Compare
+        # runs on a PR only when it touches one of the other trigger paths.
+        # HEAD is the PR's merge commit and HEAD^1 its base. git diff exits 1
+        # on a difference and 128 on an error (a parent not fetched): both
+        # run Compare. Pushes, the schedule and dispatches always run it.
+        id: gate
+        if: github.event_name == 'pull_request'
+        run: |
+          if git diff --quiet HEAD^1 HEAD -- custom_components conftest.py \
+               .github/scripts/check_mirror_sync.py .github/workflows/mirror-freshness.yml; then
+            echo "carried=false" >> "$GITHUB_OUTPUT"
+            echo "this PR leaves the carried set alone: no drift compare; the link step still runs"
+          else
+            echo "carried=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Sparse-clone the monorepo integration directory and the docs the store page links to
         id: clone
         run: |
@@ -85,6 +110,7 @@ jobs:
           echo "upstream: $(git -C /tmp/securaCV rev-parse --short HEAD)"
       - name: Compare
         id: compare
+        if: github.event_name != 'pull_request' || steps.gate.outputs.carried != 'false'
         env:
           HEAD_REF: ${{ github.head_ref }}
         run: |

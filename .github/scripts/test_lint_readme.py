@@ -540,6 +540,35 @@ class MirrorFreshnessWiring(unittest.TestCase):
             # A bare success() would read a failed link step as drift unfixed.
             self.assertNotIn("success()", s["if"].replace(UNLESS_CANCELED, ""))
 
+    def test_a_pr_that_leaves_the_carried_set_alone_skips_the_drift_compare(self):
+        # The prose files and the link script trigger this workflow for the
+        # link step alone. A store-page PR must not go red for drift it did
+        # not cause: the mirror lags the monorepo between a monorepo merge
+        # and the bot/mirror-sync PR. So on a PR, Compare runs only when the
+        # PR touches one of the other trigger paths, and the gate diffs
+        # exactly those.
+        on = self.wf.get("on", self.wf.get(True))
+        link_only = {"README.md", "AGENTS.md", "CLAUDE.md",
+                     ".github/scripts/lint_readme.py"}
+        carried = sorted(p.removesuffix("/**") for p in on["pull_request"]["paths"]
+                         if p not in link_only)
+        gate = self.step("git diff --quiet HEAD^1 HEAD")
+        m = re.search(r"git diff --quiet HEAD\^1 HEAD --((?:[^\n\\;]|\\\n)+)",
+                      gate["run"])
+        self.assertEqual(sorted(m.group(1).replace("\\\n", " ").split()), carried)
+        self.assertIn("github.event_name == 'pull_request'", gate.get("if", ""))
+        compare = self.step("check_mirror_sync.py --source")
+        self.assertIn("github.event_name != 'pull_request'", compare.get("if", ""))
+        self.assertIn(f"steps.{gate['id']}.outputs.carried != 'false'",
+                      compare.get("if", ""))
+        # HEAD^1 is the PR's base only if the checkout fetched the parents
+        # of the merge commit it checks out.
+        checkout = next(s for s in self.steps
+                        if str(s.get("uses", "")).startswith("actions/checkout@"))
+        self.assertGreaterEqual(int(checkout.get("with", {}).get("fetch-depth", 1)), 2)
+        self.assertLess(self.steps.index(checkout), self.steps.index(gate))
+        self.assertLess(self.steps.index(gate), self.steps.index(compare))
+
     def test_triggers_weekly_and_on_store_page_or_script_changes(self):
         on = self.wf.get("on", self.wf.get(True))
         self.assertIn("schedule", on)
