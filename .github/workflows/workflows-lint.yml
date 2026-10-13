@@ -11,6 +11,11 @@ name: Workflow Lint
 #     workflows can't regress the conventions; exemptions live in
 #     .github/ci-policy.yml where review can see them. Its unit tests
 #     (test_ci_policy_check.py) pin what each rule counts.
+#
+# The same unittest run holds test_lint_readme.py, whose store-page cases
+# read README.md, AGENTS.md and CLAUDE.md themselves (every URL into the
+# monorepo is one the link check reads, and the sparse clone reaches it),
+# so a PR that touches only those files runs it too.
 on:
   push:
     branches: [main]
@@ -19,12 +24,18 @@ on:
       - '.github/scripts/**'
       - '.github/ci-policy.yml'
       - '.github/CI.md'
+      - 'README.md'
+      - 'AGENTS.md'
+      - 'CLAUDE.md'
   pull_request:
     paths:
       - '.github/workflows/**'
       - '.github/scripts/**'
       - '.github/ci-policy.yml'
       - '.github/CI.md'
+      - 'README.md'
+      - 'AGENTS.md'
+      - 'CLAUDE.md'
 
 permissions:
   contents: read

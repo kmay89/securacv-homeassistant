@@ -16,12 +16,14 @@
 # and the first run on main whose Compare passes again closes it, so an open
 # issue is drift that no run on main has seen fixed yet.
 #
-# The same sparse clone carries the monorepo's docs/ and .github/workflows/,
-# so a second, separate step checks that every link the HACS store page
-# (README.md, mirror-owned) makes into kmay89/securaCV still lands: the file
-# exists and the #anchor names a real heading (.github/scripts/lint_readme.py
-# --source). A heading renamed upstream fails that step, weekly and on any PR
-# that touches the store page or the script. It never raises or closes the
+# The same sparse clone carries the monorepo's docs/, scripts/ and
+# .github/workflows/, so a second, separate step checks that every URL the
+# HACS store page (README.md, mirror-owned) and the agent briefs make into
+# kmay89/securaCV still lands, links and the installer command alike: the
+# file exists and the #anchor names a real heading
+# (.github/scripts/lint_readme.py --source). A heading renamed upstream fails
+# that step, weekly and on any PR that touches the store page or the script.
+# It never raises or closes the
 # drift issue: those two steps read the Compare step's outcome alone. A PR
 # that touches only the store page, the agent briefs or the script skips
 # Compare (the gate step says why), so drift it did not cause cannot turn it
@@ -101,12 +103,13 @@ jobs:
         run: |
           git clone --depth 1 --filter=blob:none --sparse \
             https://github.com/kmay89/securaCV.git /tmp/securaCV
-          # custom_components/securacv for the drift compare; docs and
+          # custom_components/securacv for the drift compare; docs, scripts
+          # (the installer the store page pipes to bash) and
           # .github/workflows for the store page's links. A link that reaches
           # past this set fails the link step with "outside the sparse
           # checkout", naming the path to add here.
           git -C /tmp/securaCV sparse-checkout set \
-            custom_components/securacv docs .github/workflows
+            custom_components/securacv docs scripts .github/workflows
           echo "upstream: $(git -C /tmp/securaCV rev-parse --short HEAD)"
       - name: Compare
         id: compare
