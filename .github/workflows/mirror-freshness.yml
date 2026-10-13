@@ -13,8 +13,21 @@
 # integration from the monorepo and diff. Drift fails the run and prints the
 # copy commands; the weekly run additionally raises ONE deduplicated issue
 # so a fix that landed upstream cannot sit unmirrored for weeks unnoticed,
-# and the first run on main that passes again closes it, so an open issue is
-# drift that no run on main has seen fixed yet.
+# and the first run on main whose Compare passes again closes it, so an open
+# issue is drift that no run on main has seen fixed yet.
+#
+# The same sparse clone carries the monorepo's docs/, scripts/ and
+# .github/workflows/, so a second, separate step checks that every URL the
+# HACS store page (README.md, mirror-owned) and the agent briefs make into
+# kmay89/securaCV still lands, links and the installer command alike: the
+# file exists and the #anchor names a real heading
+# (.github/scripts/lint_readme.py --source). A heading renamed upstream fails
+# that step, weekly and on any PR that touches the store page or the script.
+# It never raises or closes the
+# drift issue: those two steps read the Compare step's outcome alone. A PR
+# that touches only the store page, the agent briefs or the script skips
+# Compare (the gate step says why), so drift it did not cause cannot turn it
+# red; the link step still runs.
 name: mirror freshness
 
 on:
@@ -23,13 +36,21 @@ on:
     paths:
       - 'custom_components/**'
       - 'conftest.py'
+      - 'README.md'
+      - 'AGENTS.md'
+      - 'CLAUDE.md'
       - '.github/scripts/check_mirror_sync.py'
+      - '.github/scripts/lint_readme.py'
       - '.github/workflows/mirror-freshness.yml'
   pull_request:
     paths:
       - 'custom_components/**'
       - 'conftest.py'
+      - 'README.md'
+      - 'AGENTS.md'
+      - 'CLAUDE.md'
       - '.github/scripts/check_mirror_sync.py'
+      - '.github/scripts/lint_readme.py'
       - '.github/workflows/mirror-freshness.yml'
   schedule:
     - cron: "17 6 * * 1" # Mondays 06:17 UTC, off the :00 stampede
@@ -37,8 +58,8 @@ on:
 
 permissions:
   contents: read
-  # the scheduled run raises a deduplicated issue on drift, and a passing run
-  # on main closes it
+  # the scheduled run raises a deduplicated issue on drift, and a run on main
+  # that finds none closes it
   issues: write
 
 # PRs collapse per branch, and a new push supersedes the in-flight run; each
@@ -55,14 +76,44 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-      - name: Sparse-clone the monorepo integration directory
+        with:
+          # the parents of a PR's merge commit, for the carried-set gate below
+          fetch-depth: 2
+      - name: Does this PR touch the carried set?
+        # README.md, AGENTS.md, CLAUDE.md and lint_readme.py trigger this
+        # workflow for the link step alone. A PR that changes only those must
+        # not go red for drift it did not cause (the mirror lags the monorepo
+        # between a monorepo merge and the bot/mirror-sync PR), so Compare
+        # runs on a PR only when it touches one of the other trigger paths.
+        # HEAD is the PR's merge commit and HEAD^1 its base. git diff exits 1
+        # on a difference and 128 on an error (a parent not fetched): both
+        # run Compare. Pushes, the schedule and dispatches always run it.
+        id: gate
+        if: github.event_name == 'pull_request'
+        run: |
+          if git diff --quiet HEAD^1 HEAD -- custom_components conftest.py \
+               .github/scripts/check_mirror_sync.py .github/workflows/mirror-freshness.yml; then
+            echo "carried=false" >> "$GITHUB_OUTPUT"
+            echo "this PR leaves the carried set alone: no drift compare; the link step still runs"
+          else
+            echo "carried=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Sparse-clone the monorepo integration directory and the docs the store page links to
+        id: clone
         run: |
           git clone --depth 1 --filter=blob:none --sparse \
             https://github.com/kmay89/securaCV.git /tmp/securaCV
-          git -C /tmp/securaCV sparse-checkout set custom_components/securacv
+          # custom_components/securacv for the drift compare; docs, scripts
+          # (the installer the store page pipes to bash) and
+          # .github/workflows for the store page's links. A link that reaches
+          # past this set fails the link step with "outside the sparse
+          # checkout", naming the path to add here.
+          git -C /tmp/securaCV sparse-checkout set \
+            custom_components/securacv docs scripts .github/workflows
           echo "upstream: $(git -C /tmp/securaCV rev-parse --short HEAD)"
       - name: Compare
         id: compare
+        if: github.event_name != 'pull_request' || steps.gate.outputs.carried != 'false'
         env:
           HEAD_REF: ${{ github.head_ref }}
         run: |
@@ -91,14 +142,16 @@ jobs:
           fi
           exit 1
       - name: Raise (or refresh) the drift issue on a scheduled run
-        if: failure() && github.event_name == 'schedule'
+        # Keyed to the Compare step alone: a broken store-page link (the last
+        # step) is not drift and must not raise this issue.
+        if: failure() && steps.compare.outcome == 'failure' && github.event_name == 'schedule'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TITLE="HACS mirror has drifted from kmay89/securaCV"
           OPEN=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number --jq '.[].number' | head -1)
           RUN="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          BODY_TAIL=$'\n\n'"Raised by \`mirror-freshness.yml\`; this issue is reused while it stays open, and the first passing run on \`main\` closes it."
+          BODY_TAIL=$'\n\n'"Raised by \`mirror-freshness.yml\`; this issue is reused while it stays open, and the first run on \`main\` that finds no drift closes it."
           if [ -n "$OPEN" ]; then
             gh issue comment "$OPEN" --body "Still drifted on $(date -u +%Y-%m-%d) — see the run log for the copy commands: $RUN"
           else
@@ -111,7 +164,11 @@ jobs:
         # proves the mirror equals the monorepo's main, so it closes the issue
         # with a link to itself. A PR run proves nothing about main (it may
         # have matched a monorepo branch instead), so it never closes one.
-        if: success() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        # Keyed to the Compare step, not to the job's status: a broken
+        # store-page link says nothing about drift, so it must not keep the
+        # issue open. (success() || failure() is "unless the run was
+        # canceled".)
+        if: (success() || failure()) && steps.compare.outcome == 'success' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
           TITLE: HACS mirror has drifted from kmay89/securaCV
@@ -128,3 +185,37 @@ jobs:
               --comment "Back in sync on $(date -u +%Y-%m-%d): $RUN" \
               || echo "::warning::could not close #$n — close it by hand; the mirror matches."
           done
+      - name: The store page's links into kmay89/securaCV land
+        # Its own step, after the drift steps: it runs whether or not the
+        # mirror matches (a drifted mirror can still have broken links), and
+        # it fails for a link alone (success() || failure(): unless the run
+        # was canceled). lint_readme.py --source checks only the links
+        # (files, directories, heading and line anchors); the prose checks
+        # are validate.yml's.
+        id: links
+        if: (success() || failure()) && steps.clone.outcome == 'success'
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -uo pipefail
+          # The Compare step may have left the clone on a monorepo branch.
+          git -C /tmp/securaCV checkout -q main
+          if python3 .github/scripts/lint_readme.py --source /tmp/securaCV; then
+            exit 0
+          fi
+          # As in Compare: a PR here can lead the monorepo, linking to a doc
+          # its same-named monorepo branch adds. Pass with a notice if the
+          # links land there, so the merge order stays visible.
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ] && [ -n "${HEAD_REF:-}" ]; then
+            if git -C /tmp/securaCV fetch --depth 1 origin "refs/heads/${HEAD_REF}" 2>/dev/null \
+               && git -C /tmp/securaCV checkout -q FETCH_HEAD; then
+              echo "links miss on upstream main; trying monorepo branch '${HEAD_REF}' ($(git -C /tmp/securaCV rev-parse --short HEAD))"
+              if python3 .github/scripts/lint_readme.py --source /tmp/securaCV; then
+                echo "::notice::the store page's links land on the monorepo branch '${HEAD_REF}', not main yet — merge the monorepo PR first, then this one."
+                exit 0
+              fi
+            else
+              echo "no monorepo branch named '${HEAD_REF}' to check the links against"
+            fi
+          fi
+          exit 1

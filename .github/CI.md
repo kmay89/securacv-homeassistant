@@ -36,7 +36,16 @@ Repo-specific conventions:
   through its `homeassistant-mirror.yml` (PRs on `bot/mirror-sync`); edit
   them there, never here. `mirror-freshness.yml` is the backstop that
   proves the copy exact; its weekly run raises one drift issue, and the
-  first passing run on `main` closes it.
+  first run on `main` that finds no drift closes it. Both issue steps read
+  the Compare step's outcome, nothing else: the workflow's last step checks
+  the store page's links into the monorepo (`lint_readme.py --source`,
+  against the same sparse clone, which therefore carries `docs/`,
+  `scripts/` and `.github/workflows/`), and a broken link fails that step
+  without touching the drift issue. `workflows-lint.yml` also triggers on
+  `README.md`, `AGENTS.md` and `CLAUDE.md`: the tests it runs read them. A PR that touches only `README.md`,
+  `AGENTS.md`, `CLAUDE.md` or `lint_readme.py` runs the link step and
+  skips Compare: the mirror can lag the monorepo for reasons that PR did
+  not cause.
 - `requirements_test.txt` is owned here (Dependabot bumps it in both
   repos). `tests.yml`'s `lint` job runs its pinned ruff and mypy with the
   monorepo's `pyproject.toml` config (read from `main`, not copied), so a
