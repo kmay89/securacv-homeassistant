@@ -36,7 +36,7 @@ Repo-specific conventions:
   through its `homeassistant-mirror.yml` (PRs on `bot/mirror-sync`); edit
   them there, never here. `mirror-freshness.yml` is the backstop that
   proves the copy exact; its weekly run raises one drift issue, and the
-  first passing run on `main` closes it. Both issue steps read the Compare
+  first run on `main` that finds no drift closes it. Both issue steps read the Compare
   step's outcome, nothing else: the workflow's last step checks the store
   page's links into the monorepo (`lint_readme.py --source`, against the
   same sparse clone, which therefore carries `docs/` and

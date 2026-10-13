@@ -13,8 +13,8 @@
 # integration from the monorepo and diff. Drift fails the run and prints the
 # copy commands; the weekly run additionally raises ONE deduplicated issue
 # so a fix that landed upstream cannot sit unmirrored for weeks unnoticed,
-# and the first run on main that passes again closes it, so an open issue is
-# drift that no run on main has seen fixed yet.
+# and the first run on main whose Compare passes again closes it, so an open
+# issue is drift that no run on main has seen fixed yet.
 #
 # The same sparse clone carries the monorepo's docs/ and .github/workflows/,
 # so a second, separate step checks that every link the HACS store page
@@ -53,8 +53,8 @@ on:
 
 permissions:
   contents: read
-  # the scheduled run raises a deduplicated issue on drift, and a passing run
-  # on main closes it
+  # the scheduled run raises a deduplicated issue on drift, and a run on main
+  # that finds none closes it
   issues: write
 
 # PRs collapse per branch, and a new push supersedes the in-flight run; each
@@ -122,7 +122,7 @@ jobs:
           TITLE="HACS mirror has drifted from kmay89/securaCV"
           OPEN=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number --jq '.[].number' | head -1)
           RUN="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          BODY_TAIL=$'\n\n'"Raised by \`mirror-freshness.yml\`; this issue is reused while it stays open, and the first passing run on \`main\` closes it."
+          BODY_TAIL=$'\n\n'"Raised by \`mirror-freshness.yml\`; this issue is reused while it stays open, and the first run on \`main\` that finds no drift closes it."
           if [ -n "$OPEN" ]; then
             gh issue comment "$OPEN" --body "Still drifted on $(date -u +%Y-%m-%d) — see the run log for the copy commands: $RUN"
           else
