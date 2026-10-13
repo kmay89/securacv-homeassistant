@@ -135,9 +135,11 @@ jobs:
         # proves the mirror equals the monorepo's main, so it closes the issue
         # with a link to itself. A PR run proves nothing about main (it may
         # have matched a monorepo branch instead), so it never closes one.
-        # Keyed to the Compare step, not to success(): a broken store-page
-        # link says nothing about drift, so it must not keep the issue open.
-        if: ${{ !cancelled() && steps.compare.outcome == 'success' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+        # Keyed to the Compare step, not to the job's status: a broken
+        # store-page link says nothing about drift, so it must not keep the
+        # issue open. (success() || failure() is "unless the run was
+        # canceled".)
+        if: (success() || failure()) && steps.compare.outcome == 'success' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
           TITLE: HACS mirror has drifted from kmay89/securaCV
@@ -157,11 +159,12 @@ jobs:
       - name: The store page's links into kmay89/securaCV land
         # Its own step, after the drift steps: it runs whether or not the
         # mirror matches (a drifted mirror can still have broken links), and
-        # it fails for a link alone. lint_readme.py --source checks only the
-        # links (files, directories, heading and line anchors); the prose
-        # checks are validate.yml's.
+        # it fails for a link alone (success() || failure(): unless the run
+        # was canceled). lint_readme.py --source checks only the links
+        # (files, directories, heading and line anchors); the prose checks
+        # are validate.yml's.
         id: links
-        if: ${{ !cancelled() && steps.clone.outcome == 'success' }}
+        if: (success() || failure()) && steps.clone.outcome == 'success'
         env:
           HEAD_REF: ${{ github.head_ref }}
         run: |

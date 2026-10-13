@@ -7,11 +7,11 @@
 WHY. README.md is this repository's HACS store page (hacs.json sets
 "render_readme": true) — the most user-facing document here — and it is
 mirror-OWNED: mirror-freshness.yml deliberately never compares it against
-the monorepo, so no other gate reads its content at all. Before this lint,
+the monorepo, so no other gate reads its prose at all. Before this lint,
 a broken link, an overclaim, or a banned word in the store page merged
 green. The same holds for the two agent-brief files.
 
-Three checks, chosen to need no exemption list:
+Three checks in the default mode, chosen to need no exemption list:
 
   1. Every relative link resolves (file exists; a #fragment on a .md target
      matches a real heading, GitHub-slugified). Links inside fenced code

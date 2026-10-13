@@ -36,6 +36,7 @@ monorepo, where the privacy invariants and the dictionary-sync gate live.
 
 ```sh
 python3 .github/scripts/lint_readme.py       # prose: links, words, claims
+python3 .github/scripts/lint_readme.py --source ../securaCV  # links into the monorepo
 pip install -r requirements_test.txt
 pytest custom_components/securacv/tests -q \
   --deselect custom_components/securacv/tests/test_homekit_projection.py::test_mirror_matches_the_dictionary \
@@ -45,7 +46,13 @@ pytest custom_components/securacv/tests -q \
 
 (The three deselected tests need monorepo ground-truth files and fail by
 design in a standalone clone — [`tests.yml`](.github/workflows/tests.yml)
-deselects exactly the same three.) If you bumped the ruff or mypy pin,
+deselects exactly the same three.) The `--source` line needs a sibling
+checkout of the monorepo's `main`: it checks that every link the store page
+makes into `kmay89/securaCV` lands on a file that exists and, for a
+`#anchor`, on a heading GitHub would generate there. A heading renamed
+upstream breaks the HACS page silently otherwise;
+[`mirror-freshness.yml`](.github/workflows/mirror-freshness.yml) runs the
+same check weekly, as its own step. If you bumped the ruff or mypy pin,
 lint with the monorepo's config, as `tests.yml` does, from a sibling
 monorepo checkout:
 
