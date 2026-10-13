@@ -51,16 +51,22 @@ pointing at a monorepo checkout of main, the script checks ONLY those links
 (the prose checks stay in the default mode, so each CI step fails for its
 own reason):
 
-  * Every URL into the repository, in every link syntax (inline, reference,
-    autolink, bare, HTML attribute), outside fenced code, code spans and
-    HTML comments: github.com blob/tree/raw/blame URLs and the repository
-    root, http or https or scheme-relative, any case for the owner and
-    repo, dot segments resolved the way a browser resolves them, and
-    raw.githubusercontent.com. A link must name ref "main" (or HEAD): the
-    checkout is main, so a link pinned anywhere else cannot be vouched for
-    and is refused rather than passed. Other GitHub pages (issues,
-    releases, ...) are not paths in a checkout; they are listed as not
-    checked.
+  * Every URL into the repository written anywhere in the three files: in
+    every link syntax (inline, reference, autolink, bare, HTML attribute),
+    and in fenced code, code spans and HTML comments too, since a reader
+    copies the installer command out of a fence and nothing masked can
+    hide a link behind a stray backtick. github.com blob/tree/raw/blame
+    URLs and the repository root, http, https, scheme-relative or no
+    scheme at all, any case for the owner and repo, dot segments resolved
+    the way a browser resolves them, and raw.githubusercontent.com. The
+    extractor is held to a dumber count: a line that names the repository
+    on a GitHub host more often than it yields a URL fails the check
+    (a query value, such as my.home-assistant.io's repository_url, is the
+    one mention that is not a URL to follow). A link must name ref "main"
+    (or HEAD): the checkout is main, so a link pinned anywhere else cannot
+    be vouched for and is refused rather than passed. Other GitHub pages
+    (issues, releases, ...) are not paths in a checkout; they are listed as
+    not checked.
   * The file or directory must exist at that path. A path git knows but
     the sparse checkout left off disk is named as such, so a link that
     outgrows mirror-freshness.yml's sparse set says how to fix it (and one
@@ -328,23 +334,49 @@ def headings(lines):
         para.append(text)
 
 
+def _blank(s: str) -> str:
+    return re.sub(r"[^\n]", " ", s)
+
+
+COMMENT_OPEN_RE = re.compile(r"^ {0,3}<!--")
+
+
 def masked_lines(text: str) -> list:
-    """The file's lines as prose: fenced code blanked, HTML comments and
-    code spans overwritten with spaces, so line numbers and columns hold."""
+    """The file's lines as rendered prose: fenced code blanked, HTML
+    comments and code spans overwritten with spaces, so line numbers and
+    columns hold. A comment that opens a line is an HTML block and runs to
+    its "-->", blank lines and all. An inline comment or a code span never
+    crosses a Markdown block (blocks(): a blank line, a heading, a fence, a
+    list item or a table row ends one), so one stray backtick cannot hide
+    what the next list item says."""
+    lines = text.splitlines()
+    out = list(lines)
+    boundary = [False] * len(lines)  # fenced or comment-block lines
     fence = FenceTracker()
-    lines = ["" if fence.feed(QUOTE_RE.sub("", line)) else line
-             for line in text.splitlines()]
-    joined = "\n".join(lines)
-
-    def blank(m):
-        return re.sub(r"[^\n]", " ", m.group(0))
-
-    joined = COMMENT_RE.sub(blank, joined)
-    # A code span never crosses a blank line.
-    parts = re.split(r"(\n[ \t]*\n)", joined)
-    joined = "".join(CODE_SPAN_RE.sub(blank, p) if i % 2 == 0 else p
-                     for i, p in enumerate(parts))
-    return joined.split("\n")
+    in_comment = False
+    for i, line in enumerate(lines):
+        start = 0
+        if not in_comment:
+            body = QUOTE_RE.sub("", line)
+            if fence.feed(body):
+                out[i], boundary[i] = "", True
+                continue
+            m = COMMENT_OPEN_RE.match(body)
+            if not m:
+                continue
+            start = len(line) - len(body) + m.end() - len("<!--")
+        end = line.find("-->", start + (0 if in_comment else len("<!--")))
+        stop = len(line) if end < 0 else end + len("-->")
+        out[i] = line[:start] + _blank(line[start:stop]) + line[stop:]
+        boundary[i], in_comment = True, end < 0
+    for block in blocks(["" if b else line for b, line in zip(boundary, out)]):
+        rows = [n - 1 for n, _ in block]
+        joined = "\n".join(out[r] for r in rows)
+        joined = COMMENT_RE.sub(lambda m: _blank(m.group(0)), joined)
+        joined = CODE_SPAN_RE.sub(lambda m: _blank(m.group(0)), joined)
+        for r, piece in zip(rows, joined.split("\n")):
+            out[r] = piece
+    return out
 
 
 def markdown_anchors(text: str) -> set:
@@ -416,15 +448,27 @@ def self_check() -> list:
 
 # --- --source: the links into kmay89/securaCV -------------------------------
 UPSTREAM_REF = "main"
-# Any URL into the monorepo, in any link syntax: the lookbehind keeps a URL
-# that is only a query value (my.home-assistant.io's repository_url) out,
-# and the lookahead keeps securacv-homeassistant (this repo) out.
+# Any URL into the monorepo, wherever it is written: the lookbehind keeps a
+# URL that is only a query value (my.home-assistant.io's repository_url) or
+# part of another URL out, and the lookahead keeps securacv-homeassistant
+# (this repo) out. The scheme is optional: "github.com/kmay89/securaCV/..."
+# in prose is a URL a reader types.
 UPSTREAM_URL_RE = re.compile(
-    r"(?<![\w/?=&%.:+@-])(?:https?:)?//"
+    r"(?<![\w/?=&%.:+@-])(?:(?:https?:)?//)?"
     r"(?:(?:www\.)?github\.com/kmay89/securaCV(?:\.git)?"
     r"|raw\.githubusercontent\.com/kmay89/securaCV)"
     r"(?![\w-]|\.\w)[^\s<>()\[\]\"'`|]*",
     re.IGNORECASE)
+# The count the extractor is held to, kept dumb on purpose: every place a
+# line names the repository on a GitHub host. A mention the extractor did
+# not read fails the check (unread_mentions()), so no regex boundary can
+# drop a link silently. A query value is the one mention that is not a
+# URL to follow, and it is recognized here on its own terms.
+MENTION_RE = re.compile(
+    r"(?:github\.com|githubusercontent\.com)/kmay89/securaCV(?![\w-])",
+    re.IGNORECASE)
+QUERY_VALUE_RE = re.compile(r"=(?:https?:)?(?://)?(?:www\.|raw\.)?$",
+                            re.IGNORECASE)
 URL_TRAIL = ".,:;!?*_~"  # what a bare URL's sentence ends with, not the URL
 LINE_ANCHOR_RE = re.compile(r"^L(\d+)(?:C\d+)?(?:-L(\d+)(?:C\d+)?)?$")
 PATH_KINDS = ("blob", "tree", "raw", "blame")
@@ -448,15 +492,34 @@ class UpstreamLink:
 
 
 def upstream_links(text: str):
-    """Yield (line_number, url) for every URL into kmay89/securaCV that the
-    rendered page links: fenced code, code spans and comments are inert."""
-    for n, line in enumerate(masked_lines(text), 1):
+    """Yield (line_number, url) for every URL into kmay89/securaCV written
+    anywhere in the file: a link, a bare URL, a code span, fenced code (the
+    store page's installer command is copied out of one) or an HTML comment
+    (the next edit may uncomment it). Nothing is masked, so no stray
+    backtick or unclosed fence can hide a link from the check."""
+    for n, line in enumerate(text.splitlines(), 1):
         for m in UPSTREAM_URL_RE.finditer(line):
             yield n, m.group(0).rstrip(URL_TRAIL)
 
 
+def unread_mentions(text: str):
+    """Yield (line_number, mentions, read) for each line that names the
+    repository on a GitHub host more often than upstream_links() reads a
+    URL there (a query value aside): the extractor's own count, held to a
+    dumber one."""
+    read = {}
+    for n, _ in upstream_links(text):
+        read[n] = read.get(n, 0) + 1
+    for n, line in enumerate(text.splitlines(), 1):
+        seen = sum(1 for m in MENTION_RE.finditer(line)
+                   if not QUERY_VALUE_RE.search(line[:m.start()]))
+        if seen > read.get(n, 0):
+            yield n, seen, read.get(n, 0)
+
+
 def parse_upstream(url: str, ref: str = UPSTREAM_REF) -> UpstreamLink:
-    full = "https:" + url if url.startswith("//") else url
+    full = url if re.match(r"https?://", url, re.IGNORECASE) else \
+        "https://" + url.lstrip("/")
     parts = urlsplit(full)
     link = UpstreamLink(url=url, fragment=unquote(parts.fragment),
                         plain="1" in parse_qs(parts.query).get("plain", ()))
@@ -605,7 +668,8 @@ def check_upstream(paths, source: Path, ref: str = UPSTREAM_REF):
             problems.append(f"{path.name}: MISSING — the mirror-owned prose "
                             "set must exist (is the HACS store page gone?)")
             continue
-        for n, url in upstream_links(path.read_text(encoding="utf-8")):
+        text = path.read_text(encoding="utf-8")
+        for n, url in upstream_links(text):
             link = parse_upstream(url, ref)
             if link.kind == "page" and not link.error:
                 unchecked.append(f"{path.name}:{n}: {url}")
@@ -614,6 +678,12 @@ def check_upstream(paths, source: Path, ref: str = UPSTREAM_REF):
             why = resolve_upstream(link, source)
             if why:
                 problems.append(f"{path.name}:{n}: {url} — {why}")
+        for n, seen, read in unread_mentions(text):
+            problems.append(
+                f"{path.name}:{n}: names kmay89/securaCV on a GitHub host "
+                f"{seen} time(s), and only {read} read as a URL this check "
+                "follows; write each as a plain "
+                "https://github.com/kmay89/securaCV/... URL")
     return problems, checked, unchecked
 
 
@@ -642,6 +712,8 @@ SHAPE_CHECK = (
     ("https://raw.githubusercontent.com/kmay89/securaCV/main/docs/a.md",
      "raw", "docs/a.md", ""),
     ("https://github.com/kmay89/securaCV/issues/1", "page", "", ""),
+    ("github.com/kmay89/securaCV/blob/main/docs/a.md", "blob", "docs/a.md",
+     ""),
 )
 EXTRACT_CHECK = (
     ("[x](https://github.com/kmay89/securaCV/blob/main/a.md#b).",
@@ -652,8 +724,16 @@ EXTRACT_CHECK = (
      ["https://github.com/kmay89/securaCV/tree/main/docs"]),
     ("[m](https://github.com/kmay89/securacv-homeassistant)", []),
     ("[h](https://x.example/?u=https://github.com/kmay89/securaCV)", []),
-    ("`https://github.com/kmay89/securaCV/blob/main/a.md`", []),
-    ("```\nhttps://github.com/kmay89/securaCV/blob/main/a.md\n```", []),
+    # What a reader copies counts as much as what they click.
+    ("`https://github.com/kmay89/securaCV/blob/main/a.md`",
+     ["https://github.com/kmay89/securaCV/blob/main/a.md"]),
+    ("```\ncurl -fsSL https://raw.githubusercontent.com/kmay89/securaCV/main"
+     "/s.sh | bash\n```",
+     ["https://raw.githubusercontent.com/kmay89/securaCV/main/s.sh"]),
+    ("- a stray `\n- [x](https://github.com/kmay89/securaCV/blob/main/b.md)",
+     ["https://github.com/kmay89/securaCV/blob/main/b.md"]),
+    ("see github.com/kmay89/securaCV/tree/main/docs",
+     ["github.com/kmay89/securaCV/tree/main/docs"]),
 )
 
 
@@ -730,7 +810,8 @@ def lint_prose() -> int:
         for i, line in enumerate(lines, 1):
             in_fence = fence.feed(line)
             # Word and claim rules bind fenced samples too — the store page
-            # renders them; only the link check treats a sample as inert.
+            # renders them; only the relative-link check below treats a
+            # sample as inert (--source reads URLs in samples too).
             if BIRD.search(BIRD_MASK.sub("(", line)):
                 problems.append(f"{name}:{i}: the bird-group word — a group "
                                 "of Canaries is a FLEET")

@@ -47,6 +47,18 @@ def anchors(md: str) -> set:
     return lr.markdown_anchors(textwrap.dedent(md))
 
 
+def write(root, rel, text):
+    p = Path(root) / rel
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(text, encoding="utf-8")
+
+
+def git(cwd, *args):
+    return subprocess.run(["git", "-C", str(cwd), "-c", "user.name=t",
+                           "-c", "user.email=t@example.invalid", *args],
+                          check=True, capture_output=True, text=True).stdout
+
+
 class Slugger(unittest.TestCase):
     """slugify(): a heading's inline Markdown in, GitHub's anchor out."""
 
@@ -141,6 +153,21 @@ class Anchors(unittest.TestCase):
             # After
         """), {"after"})
 
+    def test_a_stray_backtick_or_comment_opener_hides_nothing_past_its_block(self):
+        # CommonMark: a code span or an inline comment never crosses a block
+        # (a list item, a blank line), so the anchor after one still renders.
+        self.assertEqual(anchors('- a stray `\n- <a id="x"></a> b `c`\n'), {"x"})
+        self.assertEqual(anchors('a <!-- b\n\n<a id="y"></a> -->\n'), {"y"})
+        # Inside its block a code span still hides what it holds.
+        self.assertEqual(anchors('- a `\n  <a id="x"></a>` b\n'), set())
+
+    def test_a_comment_that_opens_a_line_runs_to_its_close(self):
+        # An HTML block: blank lines do not end it, its "-->" does.
+        self.assertEqual(anchors('<!--\n\n<a id="z"></a>\n\n-->\n# After\n'),
+                         {"after"})
+        self.assertEqual(anchors('<!-- one -->\n<a id="w"></a>\n'), {"w"})
+        self.assertEqual(anchors('> <!--\n> <a id="q"></a>\n> -->\n'), set())
+
     def test_explicit_html_anchors_are_honored(self):
         found = anchors("""\
             ## <a name="pin-tracker"></a>Pin tracker
@@ -186,6 +213,10 @@ class UrlShapes(unittest.TestCase):
             f"{REPO}/blob/main/docs/a%20b.md#caf%C3%A9": ("blob", "docs/a b.md", "café", False),
             f"{REPO}/blob/main/docs/a.md?plain=1#L10-L20":
                 ("blob", "docs/a.md", "L10-L20", True),
+            # Typed without a scheme, as prose often does.
+            "github.com/kmay89/securaCV/blob/main/x.md": ("blob", "x.md", "", False),
+            "www.github.com/kmay89/securaCV/tree/main/docs": ("tree", "docs", "", False),
+            "raw.githubusercontent.com/kmay89/securaCV/main/s.sh": ("raw", "s.sh", "", False),
         }
         for url, (kind, path, frag, plain) in cases.items():
             with self.subTest(url=url):
@@ -223,30 +254,88 @@ class UrlShapes(unittest.TestCase):
         self.assertEqual([n for n, _ in lr.upstream_links(text)],
                          [1, 2, 2, 3, 4, 5])
 
-    def test_not_links_into_the_monorepo(self):
+    def test_code_and_comments_are_read_too(self):
+        # What a reader copies (the installer command in a fence, a URL in a
+        # code span) is as much a promise as what they click, and an HTML
+        # comment is one edit away from the page. Nothing is masked, so a
+        # stray backtick cannot hide the links after it.
+        install = "https://raw.githubusercontent.com/kmay89/securaCV/main/scripts/install.sh"
         text = textwrap.dedent(f"""\
-            ```
-            {REPO}/blob/main/fenced.md
+            ```bash
+            curl -fsSL {install} | bash
             ```
             `{REPO}/blob/main/code-span.md`
             <!-- {REPO}/blob/main/comment.md -->
+            - a stray `
+            - [next item]({REPO}/blob/main/after.md)
+            see github.com/kmay89/securaCV/tree/main/docs
+        """)
+        self.assertEqual(list(lr.upstream_links(text)), [
+            (2, install), (4, f"{REPO}/blob/main/code-span.md"),
+            (5, f"{REPO}/blob/main/comment.md"), (7, f"{REPO}/blob/main/after.md"),
+            (8, "github.com/kmay89/securaCV/tree/main/docs")])
+        self.assertEqual(list(lr.unread_mentions(text)), [])
+
+    def test_not_links_into_the_monorepo(self):
+        text = textwrap.dedent("""\
             [store](https://my.home-assistant.io/x?repository_url=https://github.com/kmay89/securaCV)
             [this repo](https://github.com/kmay89/securacv-homeassistant)
             [pages](https://kmay89.github.io/securaCV.github.io)
             https://github.com/kmay89/securaCVx/blob/main/a.md
         """)
         self.assertEqual(list(lr.upstream_links(text)), [])
+        self.assertEqual(list(lr.unread_mentions(text)), [])
 
-    def test_the_store_page_uses_only_shapes_this_check_resolves(self):
-        links = [lr.parse_upstream(u) for _, u in
-                 lr.upstream_links((lr.ROOT / "README.md").read_text("utf-8"))]
-        self.assertGreaterEqual(len(links), 13, "the store page lost its links?")
+    def test_a_mention_the_extractor_does_not_read_is_counted(self):
+        # The guard counts without the extractor's regex: a URL glued into
+        # another URL's path, or a host that only ends in github.com, names
+        # the repository and is not read, so the check must not pass it.
+        text = textwrap.dedent(f"""\
+            ok {REPO}/blob/main/a.md
+            [x](https://x.example/go/https://github.com/kmay89/securaCV/blob/main/a.md)
+            two {REPO}/blob/main/a.md and evilgithub.com/kmay89/securaCV/blob/main/b.md
+        """)
+        self.assertEqual(list(lr.unread_mentions(text)), [(2, 1, 0), (3, 2, 1)])
+        with mock.patch.object(lr, "UPSTREAM_URL_RE", re.compile("(?!)")):
+            self.assertEqual(list(lr.unread_mentions(text)),
+                             [(1, 1, 0), (2, 1, 0), (3, 2, 0)])
+
+    def test_the_prose_uses_only_shapes_this_check_resolves(self):
+        links = [lr.parse_upstream(u) for name in lr.FILES for _, u in
+                 lr.upstream_links((lr.ROOT / name).read_text("utf-8"))]
         self.assertEqual([lk.error for lk in links if lk.error], [])
-        self.assertEqual({lk.kind for lk in links} - {"blob", "tree", "root"}, set())
+        self.assertEqual({lk.kind for lk in links} - {"blob", "tree", "root", "raw"},
+                         set())
         # The shapes it does use today, each covered by a case above.
         self.assertTrue(any(lk.kind == "blob" and lk.fragment for lk in links))
         self.assertTrue(any(lk.kind == "blob" and not lk.fragment for lk in links))
         self.assertTrue(any(lk.kind == "root" for lk in links))
+        # The installer command the store page pipes to bash.
+        self.assertIn("scripts/install.sh",
+                      {lk.path for lk in links if lk.kind == "raw"})
+
+    def test_every_mention_in_the_prose_is_a_url_the_check_reads(self):
+        # Counted with neither regex, on the real files: every place a file
+        # names the repository on a GitHub host (this repo and query values
+        # aside) is one URL the check must read. A fixture built from the
+        # extractor's own output cannot see a link it drops; this can.
+        for name in lr.FILES:
+            text = (lr.ROOT / name).read_text("utf-8")
+            low, naive = text.lower(), 0
+            for host in ("github.com", "githubusercontent.com"):
+                needle = f"{host}/kmay89/securacv"
+                at = low.find(needle)
+                while at >= 0:
+                    after = low[at + len(needle):at + len(needle) + 1]
+                    query = low[:at].endswith(("=https://", "=http://", "=//",
+                                               "=https://www.", "=https://raw."))
+                    other_repo = after != "" and (after.isalnum() or after in "-_")
+                    if not other_repo and not query:
+                        naive += 1
+                    at = low.find(needle, at + 1)
+            with self.subTest(file=name):
+                self.assertEqual(len(list(lr.upstream_links(text))), naive)
+                self.assertEqual(list(lr.unread_mentions(text)), [])
 
 
 class Resolver(unittest.TestCase):
@@ -352,16 +441,22 @@ class Resolver(unittest.TestCase):
             [gone]({REPO}/blob/main/docs/gone.md)
             [pinned]({REPO}/blob/v2/docs/guide.md)
             [issues]({REPO}/issues)
-            `{REPO}/blob/main/inert.md`
+            `{REPO}/blob/main/in-a-code-span.md`
+            [glued](https://x.example/go/https://github.com/kmay89/securaCV/blob/main/docs/guide.md)
+            [store](https://my.home-assistant.io/x?repository_url=https://github.com/kmay89/securaCV)
         """), encoding="utf-8")
         problems, checked, unchecked = lr.check_upstream([page], self.src)
-        self.assertEqual(checked, 3)
+        self.assertEqual(checked, 4)
         self.assertEqual(unchecked, [f"README.md:5: {REPO}/issues"])
-        self.assertEqual(len(problems), 2, problems)
+        self.assertEqual(len(problems), 4, problems)
         self.assertTrue(problems[0].startswith("README.md:3: "), problems)
         self.assertIn("no such file", problems[0])
         self.assertTrue(problems[1].startswith("README.md:4: "), problems)
         self.assertIn("names ref 'v2'", problems[1])
+        self.assertTrue(problems[2].startswith("README.md:6: "), problems)
+        self.assertIn("no such file", problems[2])
+        self.assertTrue(problems[3].startswith("README.md:7: "), problems)
+        self.assertIn("1 time(s), and only 0 read as a URL", problems[3])
 
     def test_a_dangling_symlink_is_named_not_a_crash(self):
         # A sparse checkout can carry a link whose target it left off disk.
