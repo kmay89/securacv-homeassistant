@@ -185,6 +185,8 @@ jobs:
                 echo "::notice::the store page's links land on the monorepo branch '${HEAD_REF}', not main yet — merge the monorepo PR first, then this one."
                 exit 0
               fi
+            else
+              echo "no monorepo branch named '${HEAD_REF}' to check the links against"
             fi
           fi
           exit 1
