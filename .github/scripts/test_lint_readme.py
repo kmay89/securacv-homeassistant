@@ -363,6 +363,12 @@ class Resolver(unittest.TestCase):
         self.assertTrue(problems[1].startswith("README.md:4: "), problems)
         self.assertIn("names ref 'v2'", problems[1])
 
+    def test_a_dangling_symlink_is_named_not_a_crash(self):
+        # A sparse checkout can carry a link whose target it left off disk.
+        os.symlink("../spec/gone.yaml", self.src / "docs" / "linked.yaml")
+        self.assertIn("symlink to ../spec/gone.yaml",
+                      self.why(f"{REPO}/blob/main/docs/linked.yaml#L1"))
+
     def test_a_missing_prose_file_is_an_error_not_a_skip(self):
         problems, _, _ = lr.check_upstream([self.tmp / "README.md"], self.src)
         self.assertEqual(len(problems), 1)

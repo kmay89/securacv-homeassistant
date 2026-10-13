@@ -536,7 +536,10 @@ def resolve_upstream(link: UpstreamLink, source: Path):
     if link.kind == "page":
         return None
     target = source / link.path if link.path else source
-    if not os.path.lexists(target):
+    if not target.exists():
+        if os.path.islink(target):
+            return (f"a symlink to {os.readlink(target)}, which is not in the "
+                    "checkout")
         return "no such file or directory" + _sparse_hint(source, link.path)
     frag = link.fragment
     if link.kind == "raw":
