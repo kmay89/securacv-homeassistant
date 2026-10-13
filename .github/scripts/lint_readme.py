@@ -450,22 +450,23 @@ def self_check() -> list:
 UPSTREAM_REF = "main"
 # Any URL into the monorepo, wherever it is written: the lookbehind keeps a
 # URL that is only a query value (my.home-assistant.io's repository_url) or
-# part of another URL out, and the lookahead keeps securacv-homeassistant
-# (this repo) out. The scheme is optional: "github.com/kmay89/securaCV/..."
+# part of another URL or word out (emphasis markup before it is fine, as in
+# GFM), and the lookahead keeps securacv-homeassistant (this repo) out. The scheme is optional: "github.com/kmay89/securaCV/..."
 # in prose is a URL a reader types.
 UPSTREAM_URL_RE = re.compile(
-    r"(?<![\w/?=&%.:+@-])(?:(?:https?:)?//)?"
+    r"(?<![^\W_]|[/?=&%.:+@-])(?:(?:https?:)?//)?"
     r"(?:(?:www\.)?github\.com/kmay89/securaCV(?:\.git)?"
     r"|raw\.githubusercontent\.com/kmay89/securaCV)"
     r"(?![\w-]|\.\w)[^\s<>()\[\]\"'`|]*",
     re.IGNORECASE)
 # The count the extractor is held to, kept dumb on purpose: every place a
-# line names the repository on a GitHub host. A mention the extractor did
+# line names the repository on a GitHub host (another repository whose name
+# only starts with securaCV aside). A mention the extractor did
 # not read fails the check (unread_mentions()), so no regex boundary can
 # drop a link silently. A query value is the one mention that is not a
 # URL to follow, and it is recognized here on its own terms.
 MENTION_RE = re.compile(
-    r"(?:github\.com|githubusercontent\.com)/kmay89/securaCV(?![\w-])",
+    r"(?:github\.com|githubusercontent\.com)/kmay89/securaCV(?![\w-]|\.\w)",
     re.IGNORECASE)
 QUERY_VALUE_RE = re.compile(r"=(?:https?:)?(?://)?(?:www\.|raw\.)?$",
                             re.IGNORECASE)

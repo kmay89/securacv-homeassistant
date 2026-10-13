@@ -19,6 +19,8 @@ network or a monorepo checkout.
 
 from __future__ import annotations
 
+import contextlib
+import io
 import os
 import re
 import shutil
@@ -55,7 +57,8 @@ def write(root, rel, text):
 
 def git(cwd, *args):
     return subprocess.run(["git", "-C", str(cwd), "-c", "user.name=t",
-                           "-c", "user.email=t@example.invalid", *args],
+                           "-c", "user.email=t@example.invalid",
+                           "-c", "commit.gpgsign=false", *args],
                           check=True, capture_output=True, text=True).stdout
 
 
@@ -104,6 +107,19 @@ class Slugger(unittest.TestCase):
 
     def test_entities_are_decoded_first(self):
         self.assertEqual(lr.slugify("Q&amp;A"), "qa")
+
+    def test_only_letters_marks_decimal_digits_and_connectors_survive(self):
+        # A superscript or a vulgar fraction is a number but not a decimal
+        # digit, and a tab is neither a space nor a hyphen: GitHub drops them.
+        self.assertEqual(lr.slugify("x² ½ y"), "x--y")
+        self.assertEqual(lr.slugify("Tab\there"), "tabhere")
+        # An intraword underscore pair is not emphasis.
+        self.assertEqual(lr.slugify("a_b_c"), "a_b_c")
+
+    def test_a_comment_and_a_code_span_padding_leave_no_text(self):
+        self.assertEqual(lr.slugify("A <!-- c --> B"), "a--b")
+        # `` `x` `` renders `x`: one padding space each side goes.
+        self.assertEqual(lr.slugify("Use `` `x` `` here"), "use-x-here")
 
 
 class Anchors(unittest.TestCase):
@@ -160,6 +176,17 @@ class Anchors(unittest.TestCase):
         self.assertEqual(anchors('a <!-- b\n\n<a id="y"></a> -->\n'), {"y"})
         # Inside its block a code span still hides what it holds.
         self.assertEqual(anchors('- a `\n  <a id="x"></a>` b\n'), set())
+
+    def test_code_and_comments_hide_an_anchor_within_their_block(self):
+        self.assertEqual(anchors('text <!-- <a id="c"></a> --> more\n'), set())
+        self.assertEqual(anchors('```\n<a id="f"></a>\n```\n'), set())
+        self.assertEqual(anchors('> ```\n> <a id="q"></a>\n> ```\n'), set())
+
+    def test_not_headings(self):
+        # ATX needs a space after the hashes; indented code is code, even
+        # with a setext underline after it.
+        self.assertEqual(anchors("#5 not a heading\n"), set())
+        self.assertEqual(anchors("    Not a title\n===\n"), set())
 
     def test_a_comment_that_opens_a_line_runs_to_its_close(self):
         # An HTML block: blank lines do not end it, its "-->" does.
@@ -229,6 +256,7 @@ class UrlShapes(unittest.TestCase):
             f"{REPO}/tree/feature/x/docs": "names ref 'feature'",
             f"{REPO}/blob/main": "needs a file path",
             f"{REPO}/blob/main/../../../other/x": "lead out of kmay89/securaCV",
+            f"{REPO}/blob/mainline/docs/a.md": "names ref 'mainline'",
         }.items():
             with self.subTest(url=url):
                 self.assertIn(why, lr.parse_upstream(url).error)
@@ -246,13 +274,17 @@ class UrlShapes(unittest.TestCase):
             | table | {REPO}/blob/main/c.md |
             <a href="{REPO}/blob/main/d.md">html</a>
             [ref]: {REPO}/blob/main/e.md
+            **https://www.github.com/kmay89/securaCV/blob/main/f.md**, _{REPO}/blob/main/g.md_
         """)
         self.assertEqual([u for _, u in lr.upstream_links(text)], [
             f"{REPO}/blob/main/a.md#x", f"{REPO}/tree/main/docs",
             f"{REPO}/blob/main/b.md", f"{REPO}/blob/main/c.md",
-            f"{REPO}/blob/main/d.md", f"{REPO}/blob/main/e.md"])
+            f"{REPO}/blob/main/d.md", f"{REPO}/blob/main/e.md",
+            # GFM leaves a bare URL's trailing emphasis and punctuation out.
+            "https://www.github.com/kmay89/securaCV/blob/main/f.md",
+            f"{REPO}/blob/main/g.md"])
         self.assertEqual([n for n, _ in lr.upstream_links(text)],
-                         [1, 2, 2, 3, 4, 5])
+                         [1, 2, 2, 3, 4, 5, 6, 6])
 
     def test_code_and_comments_are_read_too(self):
         # What a reader copies (the installer command in a fence, a URL in a
@@ -281,6 +313,7 @@ class UrlShapes(unittest.TestCase):
             [store](https://my.home-assistant.io/x?repository_url=https://github.com/kmay89/securaCV)
             [this repo](https://github.com/kmay89/securacv-homeassistant)
             [pages](https://kmay89.github.io/securaCV.github.io)
+            [another repo](https://github.com/kmay89/securaCV.github.io)
             https://github.com/kmay89/securaCVx/blob/main/a.md
         """)
         self.assertEqual(list(lr.upstream_links(text)), [])
@@ -428,6 +461,34 @@ class Resolver(unittest.TestCase):
     def test_other_markup_anchors_are_refused_not_guessed(self):
         self.assertIn("not computed",
                       self.why(f"{REPO}/blob/main/docs/guide.rst#title"))
+        # Rendered too, so a line anchor there needs ?plain=1 as well.
+        self.assertIn("?plain=1", self.why(f"{REPO}/blob/main/docs/guide.rst#L1"))
+        self.assertIsNone(self.why(f"{REPO}/blob/main/docs/guide.rst?plain=1#L1"))
+
+    def test_only_plain_1_shows_the_source(self):
+        md = f"{REPO}/blob/main/docs/guide.md"
+        self.assertFalse(lr.parse_upstream(f"{md}?plain=0#L2").plain)
+        self.assertIn("?plain=1", self.why(f"{md}?plain=0#L2"))
+
+    def test_a_blame_view_has_no_headings(self):
+        self.assertIn("not a line anchor",
+                      self.why(f"{REPO}/blame/main/docs/guide.md#notes"))
+
+    def test_an_anchor_is_matched_exactly(self):
+        # GitHub's slugs are lowercase; this check does not guess at a
+        # browser forgiving a differently cased fragment.
+        self.assertIn("matches no heading",
+                      self.why(f"{REPO}/blob/main/docs/guide.md#Step-1-Install"))
+
+    def test_which_readme_a_directory_anchor_reads(self):
+        # GitHub shows .github/README before the root's, and finds a
+        # lowercase readme too.
+        self.write(".github/README.md", "# Dotgithub\n")
+        self.write("docs/lower/readme.md", "# Lower\n")
+        lr.anchors_of.cache_clear()
+        self.assertIsNone(self.why(f"{REPO}#dotgithub"))
+        self.assertIn(".github/README.md", self.why(f"{REPO}#start-here"))
+        self.assertIsNone(self.why(f"{REPO}/tree/main/docs/lower#lower"))
 
     def test_raw_urls(self):
         self.assertIn("no anchors", self.why(f"{REPO}/raw/main/docs/data.yaml#L1"))
@@ -511,13 +572,15 @@ class Resolver(unittest.TestCase):
 
 
 class StorePage(unittest.TestCase):
-    """The real README.md against a checkout built from its own links: every
-    link lands, and renaming any one heading fails exactly that link."""
+    """The real prose against a checkout built from its own links: every
+    link lands, and renaming any one heading fails exactly that link. (Its
+    links come from the extractor; UrlShapes holds the extractor to a count
+    that does not.)"""
 
     def test_fixture_from_its_own_links_resolves_then_a_rename_fails(self):
-        readme = lr.ROOT / "README.md"
-        links = [lr.parse_upstream(u) for _, u in
-                 lr.upstream_links(readme.read_text("utf-8"))]
+        prose = [lr.ROOT / name for name in lr.FILES]
+        links = [lr.parse_upstream(u) for p in prose for _, u in
+                 lr.upstream_links(p.read_text("utf-8"))]
         heads = {}  # path -> anchors that file must carry
         with tempfile.TemporaryDirectory() as d:
             src = Path(d)
@@ -532,7 +595,7 @@ class StorePage(unittest.TestCase):
                 body = "".join(f"## {f.replace('-', ' ')}\n" for f in sorted(frags))
                 (src / path).write_text(f"# Doc\n{body}", encoding="utf-8")
             lr.anchors_of.cache_clear()
-            problems, checked, _ = lr.check_upstream([readme], src)
+            problems, checked, _ = lr.check_upstream(prose, src)
             self.assertEqual(problems, [])
             self.assertEqual(checked, len(links))
 
@@ -543,7 +606,7 @@ class StorePage(unittest.TestCase):
                 text.replace(f"## {gone.replace('-', ' ')}\n", "## Renamed\n"),
                 encoding="utf-8")
             lr.anchors_of.cache_clear()
-            problems, _, _ = lr.check_upstream([readme], src)
+            problems, _, _ = lr.check_upstream(prose, src)
             lr.anchors_of.cache_clear()
             self.assertTrue(problems)
             self.assertTrue(all(f"#{gone} matches no heading" in p
@@ -551,32 +614,92 @@ class StorePage(unittest.TestCase):
 
 
 class CommandLine(unittest.TestCase):
+    """main(['--source', ...]) on a fixture mirror and monorepo: its exit
+    code is what the CI step reads, so each way to fail is pinned to 1."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.mirror, self.src = self.tmp / "mirror", self.tmp / "securaCV"
+        write(self.src, "docs/guide.md", "# Guide\n## Step 1: Install\n")
+        write(self.src, "scripts/install.sh", "echo installed\n")
+        self.prose = {
+            "README.md": f"[g]({REPO}/blob/main/docs/guide.md#step-1-install)\n"
+                         "```bash\ncurl -fsSL https://raw.githubusercontent.com/"
+                         "kmay89/securaCV/main/scripts/install.sh | bash\n```\n",
+            "AGENTS.md": f"[docs]({REPO}/tree/main/docs)\n",
+            "CLAUDE.md": f"[monorepo]({REPO})\n",
+        }
+        for name, body in self.prose.items():
+            write(self.mirror, name, body)
+        patcher = mock.patch.object(lr, "ROOT", self.mirror)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        lr.anchors_of.cache_clear()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+        lr.anchors_of.cache_clear()
+
+    def main(self, *args):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = lr.main(list(args))
+        lr.anchors_of.cache_clear()
+        return code, out.getvalue() + err.getvalue()
+
+    def test_every_link_lands_exits_0(self):
+        code, text = self.main("--source", str(self.src))
+        self.assertEqual(code, 0, text)
+        self.assertIn("4 resolve", text)
+
+    def test_a_renamed_heading_exits_1(self):
+        write(self.src, "docs/guide.md", "# Guide\n## Step 1: Set up\n")
+        code, text = self.main("--source", str(self.src))
+        self.assertEqual(code, 1)
+        self.assertIn("README.md:1:", text)
+        self.assertIn("#step-1-install matches no heading", text)
+
+    def test_a_moved_installer_exits_1(self):
+        (self.src / "scripts" / "install.sh").unlink()
+        code, text = self.main("--source", str(self.src))
+        self.assertEqual(code, 1)
+        self.assertIn("README.md:3:", text)
+
+    def test_a_broken_link_in_each_prose_file_exits_1(self):
+        for name in lr.FILES:
+            with self.subTest(file=name):
+                write(self.mirror, name, f"[gone]({REPO}/blob/main/docs/gone.md)\n")
+                code, text = self.main("--source", str(self.src))
+                write(self.mirror, name, self.prose[name])
+                self.assertEqual(code, 1)
+                self.assertIn(f"{name}:1:", text)
+
+    def test_a_missing_prose_file_exits_1(self):
+        (self.mirror / "CLAUDE.md").unlink()
+        code, text = self.main("--source", str(self.src))
+        self.assertEqual(code, 1)
+        self.assertIn("CLAUDE.md: MISSING", text)
 
     def test_the_self_check_passes(self):
         self.assertEqual(lr.self_check_upstream(), [])
 
-    def test_a_broken_slugger_fails_its_own_probes(self):
+    def test_a_broken_slugger_fails_its_own_probes_and_exits_1(self):
         with mock.patch.object(lr, "heading_text", lambda raw: raw):
             self.assertTrue(lr.self_check_upstream())
+            code, text = self.main("--source", str(self.src))
+        self.assertEqual(code, 1)
+        self.assertNotIn("OK", text)
 
     def test_a_source_that_is_not_a_directory_exits_2(self):
-        with tempfile.TemporaryDirectory() as d, \
-                mock.patch("sys.stderr", new=open(os.devnull, "w")) as err:
-            try:
-                self.assertEqual(lr.main(["--source", str(Path(d) / "no")]), 2)
-            finally:
-                err.close()
+        self.assertEqual(self.main("--source", str(self.tmp / "no"))[0], 2)
 
     def test_source_mode_checks_only_the_links(self):
         # A banned claim in the prose is the default mode's business; the
         # --source step must fail for its links alone.
-        with mock.patch.object(lr, "lint_prose", side_effect=AssertionError), \
-                mock.patch.object(lr, "check_upstream", return_value=([], 0, [])), \
-                mock.patch("sys.stdout", new=open(os.devnull, "w")) as out:
-            try:
-                self.assertEqual(lr.main(["--source", str(lr.ROOT)]), 0)
-            finally:
-                out.close()
+        write(self.mirror, "AGENTS.md", self.prose["AGENTS.md"] +
+              "Our record is tamper-proof.\n")
+        with mock.patch.object(lr, "lint_prose", side_effect=AssertionError):
+            self.assertEqual(self.main("--source", str(self.src))[0], 0)
 
 
 class MirrorFreshnessWiring(unittest.TestCase):
@@ -598,8 +721,9 @@ class MirrorFreshnessWiring(unittest.TestCase):
         clone = self.step("sparse-checkout set")
         m = re.search(r"sparse-checkout set ((?:[^\n\\]|\\\n)+)", clone["run"])
         cone = m.group(1).replace("\\\n", " ").split()
-        paths = {lr.parse_upstream(u).path for _, u in
-                 lr.upstream_links((lr.ROOT / "README.md").read_text("utf-8"))}
+        paths = {lr.parse_upstream(u).path for name in lr.FILES for _, u in
+                 lr.upstream_links((lr.ROOT / name).read_text("utf-8"))}
+        self.assertIn("scripts/install.sh", paths)  # the installer, in its fence
         for path in sorted(paths - {""}):
             # Cone mode carries everything under a cone directory, and the
             # files directly in each of its ancestors (the root's included).
@@ -666,12 +790,196 @@ class MirrorFreshnessWiring(unittest.TestCase):
 
     def test_triggers_weekly_and_on_store_page_or_script_changes(self):
         on = self.wf.get("on", self.wf.get(True))
-        self.assertIn("schedule", on)
+        (cron,) = [c["cron"] for c in on["schedule"]]
+        minute, hour, dom, month, dow = cron.split()
+        # Weekly: one fixed minute, hour and weekday, every month.
+        self.assertTrue(minute.isdigit() and hour.isdigit(), cron)
+        self.assertEqual((dom, month), ("*", "*"), cron)
+        self.assertRegex(dow, r"^[0-6]$", cron)
         for trig in ("push", "pull_request"):
             with self.subTest(trigger=trig):
                 for path in ("README.md", "AGENTS.md", "CLAUDE.md",
                              ".github/scripts/lint_readme.py"):
                     self.assertIn(path, on[trig]["paths"])
+
+    def test_each_step_condition_and_the_link_step_last(self):
+        # Exact strings: each clause carries a promise, and a test that
+        # only looks for one clause passes when another is lost.
+        want = {
+            "git diff --quiet HEAD^1 HEAD": "github.event_name == 'pull_request'",
+            "check_mirror_sync.py --source":
+                "github.event_name != 'pull_request' || "
+                "steps.gate.outputs.carried != 'false'",
+            "gh issue create":
+                "failure() && steps.compare.outcome == 'failure' && "
+                "github.event_name == 'schedule'",
+            "gh issue close":
+                f"{UNLESS_CANCELED} && steps.compare.outcome == 'success' && "
+                "github.ref == 'refs/heads/main' && "
+                "github.event_name != 'pull_request'",
+            "lint_readme.py --source /tmp/securaCV":
+                f"{UNLESS_CANCELED} && steps.clone.outcome == 'success'",
+        }
+        for needle, cond in want.items():
+            with self.subTest(step=needle):
+                self.assertEqual(self.step(needle).get("if"), cond)
+        # Last: a red link step must not skip Compare or the issue steps
+        # (their implicit success() would read it as a failure before them).
+        self.assertIs(self.steps[-1], self.step("lint_readme.py --source"))
+        self.assertIsNone(self.step("sparse-checkout set").get("if"))
+
+    def test_the_store_page_tests_run_on_a_store_page_pr(self):
+        # This file reads README.md, AGENTS.md and CLAUDE.md themselves, so
+        # the workflow that runs it must trigger on them.
+        lint = yaml.safe_load((lr.ROOT / ".github" / "workflows" /
+                               "workflows-lint.yml").read_text("utf-8"))
+        on = lint.get("on", lint.get(True))
+        runs = " ".join(st.get("run", "") for job in lint["jobs"].values()
+                        for st in job["steps"])
+        self.assertIn("unittest discover -s .github/scripts -p 'test_*.py'", runs)
+        for trig in ("push", "pull_request"):
+            for name in lr.FILES:
+                with self.subTest(trigger=trig, file=name):
+                    self.assertIn(name, on[trig]["paths"])
+
+
+# Actions runs a run: block as bash --noprofile --norc -eo pipefail {0}.
+ACTIONS_BASH = ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c"]
+
+
+def workflow_step(needle):
+    (job,) = yaml.safe_load(FRESHNESS.read_text("utf-8"))["jobs"].values()
+    (found,) = [st for st in job["steps"] if needle in st.get("run", "")]
+    return found
+
+
+@unittest.skipUnless(shutil.which("git") and shutil.which("bash"),
+                     "needs git and bash")
+class GateStep(unittest.TestCase):
+    """The gate's own run: script, on a PR's merge commit as actions/checkout
+    leaves it (fetch-depth 2): a PR that touches only the store page, the
+    briefs or the link script skips Compare; any other trigger path runs it."""
+
+    BASE = ("README.md", "AGENTS.md", "CLAUDE.md", "conftest.py",
+            "custom_components/securacv/x.py", ".github/scripts/lint_readme.py",
+            ".github/scripts/check_mirror_sync.py",
+            ".github/workflows/mirror-freshness.yml")
+
+    def carried(self, touched, depth=2):
+        with tempfile.TemporaryDirectory() as d:
+            repo, ck = Path(d) / "repo", Path(d) / "checkout"
+            git(d, "init", "-q", "-b", "main", str(repo))
+            for rel in self.BASE:
+                write(repo, rel, "base\n")
+            git(repo, "add", "-A")
+            git(repo, "commit", "-qm", "base")
+            git(repo, "checkout", "-qb", "pr")
+            for rel in touched:
+                write(repo, rel, "changed\n")
+            git(repo, "add", "-A")
+            git(repo, "commit", "-qm", "pr")
+            git(repo, "checkout", "-q", "main")
+            write(repo, "elsewhere.txt", "the base moved on\n")
+            git(repo, "add", "-A")
+            git(repo, "commit", "-qm", "base moves")
+            # GitHub's test merge: first parent the base, second the PR head.
+            git(repo, "merge", "-q", "--no-ff", "--no-edit", "pr")
+            git(d, "clone", "-q", f"--depth={depth}", f"file://{repo}", str(ck))
+            out = Path(d) / "github_output"
+            run = subprocess.run(
+                ACTIONS_BASH + [workflow_step("git diff --quiet HEAD^1 HEAD")["run"]],
+                cwd=ck, env={**os.environ, "GITHUB_OUTPUT": str(out)},
+                capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            return out.read_text().strip()
+
+    def test_a_store_page_pr_skips_the_drift_compare(self):
+        self.assertEqual(self.carried(["README.md"]), "carried=false")
+        self.assertEqual(self.carried(["AGENTS.md", "CLAUDE.md",
+                                       ".github/scripts/lint_readme.py"]),
+                         "carried=false")
+
+    def test_a_pr_touching_any_other_trigger_path_runs_it(self):
+        for touched in (["custom_components/securacv/x.py"], ["conftest.py"],
+                        [".github/scripts/check_mirror_sync.py"],
+                        [".github/workflows/mirror-freshness.yml"],
+                        ["README.md", "custom_components/securacv/x.py"]):
+            with self.subTest(touched=touched):
+                self.assertEqual(self.carried(touched), "carried=true")
+
+    def test_without_the_base_commit_it_runs_compare(self):
+        # A checkout too shallow to hold HEAD^1: git diff errors, so Compare runs.
+        self.assertEqual(self.carried(["README.md"], depth=1), "carried=true")
+
+
+@unittest.skipUnless(shutil.which("git") and shutil.which("bash"),
+                     "needs git and bash")
+class LinkStep(unittest.TestCase):
+    """The link step's own run: script against a fixture monorepo clone (in
+    place of /tmp/securaCV) whose main has the heading "Old name" and whose
+    branch same-name renames it to "New name"."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        up = self.tmp / "upstream"
+        git(self.tmp, "init", "-q", "-b", "main", str(up))
+        write(up, "docs/guide.md", "# Guide\n## Old name\n")
+        git(up, "add", "-A")
+        git(up, "commit", "-qm", "main")
+        git(up, "checkout", "-qb", "same-name")
+        write(up, "docs/guide.md", "# Guide\n## New name\n")
+        git(up, "commit", "-qam", "the branch renames the heading")
+        git(up, "checkout", "-q", "main")
+        self.clone = self.tmp / "securaCV"
+        git(self.tmp, "clone", "-q", "--depth=1", f"file://{up}", str(self.clone))
+        self.mirror = self.tmp / "mirror"
+        write(self.mirror, ".github/scripts/lint_readme.py",
+              (lr.ROOT / ".github/scripts/lint_readme.py").read_text("utf-8"))
+        for name in ("AGENTS.md", "CLAUDE.md"):
+            write(self.mirror, name, f"See {REPO}.\n")
+        self.script = workflow_step("lint_readme.py --source /tmp/securaCV")["run"] \
+            .replace("/tmp/securaCV", str(self.clone))
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+
+    def run_step(self, anchor, event, head_ref=""):
+        write(self.mirror, "README.md",
+              f"[g]({REPO}/blob/main/docs/guide.md#{anchor})\n")
+        env = {k: v for k, v in os.environ.items() if not k.startswith("GITHUB_")}
+        return subprocess.run(
+            ACTIONS_BASH + [self.script], cwd=self.mirror, capture_output=True,
+            text=True, env={**env, "GITHUB_EVENT_NAME": event, "HEAD_REF": head_ref})
+
+    def test_links_that_land_pass(self):
+        run = self.run_step("old-name", "schedule")
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+
+    def test_a_broken_link_fails_the_step_on_every_event(self):
+        for event in ("schedule", "push", "workflow_dispatch", "pull_request"):
+            with self.subTest(event=event):
+                self.assertEqual(self.run_step("gone", event).returncode, 1)
+
+    def test_a_pr_falls_back_to_its_same_named_monorepo_branch(self):
+        run = self.run_step("new-name", "pull_request", "same-name")
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertIn("::notice::", run.stdout)
+        run = self.run_step("new-name", "pull_request", "missing")
+        self.assertEqual(run.returncode, 1)
+        self.assertIn("no monorepo branch named 'missing'", run.stdout)
+
+    def test_only_a_pr_falls_back(self):
+        for event in ("push", "schedule"):
+            with self.subTest(event=event):
+                self.assertEqual(
+                    self.run_step("new-name", event, "same-name").returncode, 1)
+
+    def test_it_reads_main_where_compare_left_the_clone_on_a_branch(self):
+        git(self.clone, "fetch", "-q", "--depth=1", "origin",
+            "refs/heads/same-name")
+        git(self.clone, "checkout", "-q", "FETCH_HEAD")
+        self.assertEqual(self.run_step("new-name", "schedule").returncode, 1)
+        self.assertEqual(self.run_step("old-name", "schedule").returncode, 0)
 
 
 if __name__ == "__main__":
