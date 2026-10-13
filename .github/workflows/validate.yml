@@ -47,7 +47,7 @@ jobs:
     # AGENTS.md, CLAUDE.md): every relative link resolves, no banned
     # bird-group word (a group of Canaries is a fleet), no overclaims.
     name: Mirror-owned prose (store page + briefs)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned: the latest runner image moves to Ubuntu 26.04 on 2026-10-19; revisit before 24.04 retires
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
@@ -55,7 +55,7 @@ jobs:
 
   hassfest:
     name: Hassfest
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned: the latest runner image moves to Ubuntu 26.04 on 2026-10-19; revisit before 24.04 retires
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -65,7 +65,7 @@ jobs:
 
   hacs:
     name: HACS
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned: the latest runner image moves to Ubuntu 26.04 on 2026-10-19; revisit before 24.04 retires
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7

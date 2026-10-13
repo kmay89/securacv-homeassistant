@@ -50,7 +50,7 @@ concurrency:
 jobs:
   actionlint:
     name: actionlint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned: the latest runner image moves to Ubuntu 26.04 on 2026-10-19; revisit before 24.04 retires
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -63,7 +63,7 @@ jobs:
 
   ci-policy:
     name: CI policy (.github/CI.md)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned: the latest runner image moves to Ubuntu 26.04 on 2026-10-19; revisit before 24.04 retires
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
