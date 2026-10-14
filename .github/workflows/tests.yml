@@ -29,7 +29,7 @@ concurrency:
 jobs:
   pytest:
     name: pytest (${{ matrix.python }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned: the latest runner image moves to Ubuntu 26.04 on 2026-10-19; revisit before 24.04 retires
     timeout-minutes: 15
     strategy:
       matrix:
@@ -65,7 +65,7 @@ jobs:
     # findings the monorepo's gate never asked for. A PR here that leads the monorepo is linted against
     # main's config; mirror-freshness already says to merge the monorepo first.
     name: ruff + mypy (the monorepo's config)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned: the latest runner image moves to Ubuntu 26.04 on 2026-10-19; revisit before 24.04 retires
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7

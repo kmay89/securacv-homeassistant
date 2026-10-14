@@ -72,7 +72,7 @@ concurrency:
 jobs:
   compare:
     name: custom_components/securacv matches kmay89/securaCV
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned: the latest runner image moves to Ubuntu 26.04 on 2026-10-19; revisit before 24.04 retires
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
