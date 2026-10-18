@@ -72,6 +72,12 @@ chain.
   [watches](https://github.com/kmay89/securaCV/blob/main/docs/design/watches.md)**,
   bounded attention that ends by itself: `securacv.start_watch`,
   `securacv.end_watch` and `securacv.list_watches`.
+- **A staged firmware rollout.** `securacv.staged_update` installs the
+  fleet's pending firmware one Canary at a time: each node must report the
+  new version through its own update entity before the next one starts, and
+  the rollout stops at the first node that fails or times out. It installs
+  only what each node's own signed-OTA engine accepts
+  ([staged rollout](https://github.com/kmay89/securaCV/blob/main/docs/OTA.md#5-staged-rollout-hub-side)).
 - **Assist voice answers** with Home Assistant's own conversation agent: "is
   the fleet OK?", "what did I miss?", "keep an eye on the gate for two
   weeks". Voice can ask and can start a watch; no sentence arms, disarms,
