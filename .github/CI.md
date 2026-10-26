@@ -12,7 +12,7 @@ In one line each:
 |---|------|
 | R1 | Every workflow declares `permissions` (least-privilege `GITHUB_TOKEN`, always explicit) |
 | R2 | Every job sets `timeout-minutes` |
-| R3 | Push/PR workflows declare a `concurrency` group. **Tests:** `group: <name>-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' \|\| github.sha }}` + `cancel-in-progress: ${{ github.event_name == 'pull_request' }}` — PR runs collapse per branch, every main commit gets its own group. GitHub keeps one *pending* run per group and a third arrival evicts it, so a shared per-ref group can leave a main commit unchecked while looking merely queued. **Publishers** keep `group: <name>-${{ github.ref }}` + `cancel-in-progress: false`, listed in `ci-policy.yml → main_queue_ok` (this repo has none). Never a bare `cancel-in-progress: true` on a branch push |
+| R3 | Push/PR workflows declare a `concurrency` group. **Tests:** `group: <name>-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' \|\| github.sha }}` + `cancel-in-progress: ${{ github.event_name == 'pull_request' }}` — PR runs collapse per branch, every main commit gets its own group. GitHub keeps one *pending* run per group and a third arrival evicts it, so a shared per-ref group can leave a main commit unchecked while looking merely queued. **Publishers** keep `group: <name>-${{ github.ref }}` + `cancel-in-progress: false`, listed in `ci-policy.yml → main_queue_ok` (here: `release.yml`, which creates the GitHub release for the carried integration's version). Never a bare `cancel-in-progress: true` on a branch push |
 | R4 | Action refs are pinned — never `@main`/`@master`, never docker `:latest` |
 | R5 | `pull_request` workflows are path-filtered (or listed in `ci-policy.yml → unfiltered_ok` with a reason) |
 | R6 | `push` and `pull_request` path lists are identical |
@@ -46,6 +46,13 @@ Repo-specific conventions:
   `AGENTS.md`, `CLAUDE.md` or `lint_readme.py` runs the link step and
   skips Compare: the mirror can lag the monorepo for reasons that PR did
   not cause.
+- `release.yml` is the one publisher: after a carry that touches
+  `custom_components/securacv/manifest.json` it creates the GitHub release
+  `v<version>` at that commit unless the tag exists (then main moved
+  without a bump and it publishes nothing). The version is the monorepo's
+  — this repo never invents one. HACS lists those releases beside `main`,
+  and the HACS default store requires at least one. Dispatch it by hand to
+  release the version `main` already declares.
 - `requirements_test.txt` is owned here (Dependabot bumps it in both
   repos). `tests.yml`'s `lint` job runs its pinned ruff and mypy with the
   monorepo's `pyproject.toml` config (read from `main`, not copied), so a

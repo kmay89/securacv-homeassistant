@@ -1,0 +1,79 @@
+name: Release
+
+# HACS lists an integration's GitHub releases, and the HACS default store
+# requires at least one ("a full release, not just a tag"). A release is
+# also the stable point a user can pin, while `main` carries every monorepo
+# change as it lands. The version is the carried integration's own —
+# custom_components/securacv/manifest.json `version`, which the monorepo's
+# release train bumps — so this repo invents no version of its own: after
+# every carry that touches the manifest it creates the release `v<version>`
+# at that commit, unless that tag already exists, in which case main moved
+# without a version bump and nothing is published. Dispatch it by hand to
+# create the release for the version main already declares.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'custom_components/securacv/manifest.json'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write  # creates the tag and the release, nothing else
+
+# A publisher (CI.md R3, ci-policy.yml main_queue_ok): runs queue per ref
+# and are never canceled, so two carries landing close together cannot race
+# the same tag, and a superseded run is simply the older of two that would
+# have created the same release.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release the carried integration's version
+    runs-on: ubuntu-24.04  # pinned: the latest runner image moves to Ubuntu 26.04 on 2026-10-19; revisit before 24.04 retires
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Read the version the integration declares
+        id: version
+        run: |
+          version=$(python3 -c 'import json; print(json.load(open("custom_components/securacv/manifest.json"))["version"])')
+          case "$version" in
+            ''|*[!0-9.]*|.*|*.|*..*)
+              echo "::error::manifest.json version '$version' is not dotted digits; refusing to tag it"
+              exit 1 ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Create the release unless its tag already exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists: main moved without a version bump, nothing to publish." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::tag $TAG exists without a release; publish the release from that tag by hand (Releases → Draft a new release), then re-run"
+            exit 1
+          fi
+          {
+            echo "The SecuraCV Home Assistant integration at version $VERSION, carried byte-for-byte from the monorepo (kmay89/securaCV): the verified witness log for Frigate. Signed, hash-chained events in Home Assistant, never footage, never identity."
+            echo
+            echo "- What changed: https://github.com/kmay89/securaCV/blob/main/CHANGELOG.md"
+            echo "- Setup guide: https://github.com/kmay89/securaCV/blob/main/docs/homeassistant_setup.md"
+            echo
+            echo "Install through HACS (custom repository https://github.com/kmay89/securacv-homeassistant, type Integration), then Settings → Devices & Services → Add Integration → SecuraCV. Requires Home Assistant 2026.5.0 or newer."
+          } > "$RUNNER_TEMP/release-notes.md"
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "SecuraCV $VERSION" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"
+          echo "Created release $TAG at $GITHUB_SHA." | tee -a "$GITHUB_STEP_SUMMARY"

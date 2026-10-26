@@ -32,5 +32,10 @@ branch_cancel_ok: []
 # group per ref instead of one per commit. Only for publishers whose runs must
 # land in order: a queued publish that gets evicted is superseded by the newer
 # one. A TEST workflow does not belong here — an evicted test run is a main
-# commit nobody checked. This repo publishes nothing, so it stays empty.
-main_queue_ok: []
+# commit nobody checked.
+main_queue_ok:
+  # release.yml creates the GitHub release `v<manifest version>` after a carry
+  # (HACS lists releases; the default store requires one). Two carries landing
+  # close together must not race the same tag, and the later run is the one
+  # that matters: it sees the newer manifest.
+  - release.yml
