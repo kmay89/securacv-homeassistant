@@ -257,6 +257,13 @@ neither raises nor holds open a drift issue.
 the agent briefs ([`AGENTS.md`](AGENTS.md), [`CLAUDE.md`](CLAUDE.md)) are
 owned here.
 
+Releases are cut here, from the carried version: after a carry that bumps
+`custom_components/securacv/manifest.json`,
+[`release.yml`](.github/workflows/release.yml) creates the GitHub release
+`v<version>` at that commit (never a version of this repo's own). HACS lists
+those releases beside `main`; `main` carries every monorepo change as it
+lands, a release is the stable point to pin.
+
 Run the tests standalone:
 
 ```sh
