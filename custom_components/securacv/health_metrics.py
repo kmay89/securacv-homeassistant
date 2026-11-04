@@ -100,20 +100,45 @@ def canary_sd_replace_recommended(health_payload: dict[str, Any] | None) -> bool
     return bool(sd.get("replace_recommended", False))
 
 
-def memory_free_bytes(health_payload: dict[str, Any]) -> int:
-    """Free-memory reading across firmware payload spellings.
+def memory_free_reading(health_payload: dict[str, Any]) -> int | None:
+    """Free-memory reading across firmware payload spellings, or None.
 
     canary-wap publishes `memory_free`; firmware/canary publishes
-    `free_heap`. Read both so either firmware family reports correctly.
+    `free_heap`. The first of the two that holds a number is the reading;
+    None when the health carries neither as a number, so a reader can tell
+    "no reading" from "0 bytes free". A non-finite number is no number:
+    json.loads takes `Infinity`, `NaN` and `1e400`, and int() raises
+    OverflowError on the infinities, which out of an MQTT callback would be
+    a traceback on every such publish an untrusted broker sends. Nor is a
+    JSON `true` or `false`, which int() would read as 1 or 0 bytes free and
+    both Memory Critical and the Health sensor as critical, nor a negative
+    number: both firmware count free heap unsigned (uint32_t, published
+    with %lu), so a count below zero is not one either firmware can send,
+    and it is skipped like junk rather than read as low memory (sweep HA53).
     """
     for key in ("memory_free", "free_heap"):
         value = health_payload.get(key)
-        if value is not None:
-            try:
-                return int(value)
-            except (TypeError, ValueError):
-                continue
-    return 0
+        if value is None or isinstance(value, bool):
+            continue
+        try:
+            reading = int(value)
+        except (TypeError, ValueError, OverflowError):
+            continue
+        # -0.5 truncates to 0, so the sign is read before truncation too.
+        if reading < 0 or (isinstance(value, float) and value < 0):
+            continue
+        return reading
+    return None
+
+
+def memory_free_bytes(health_payload: dict[str, Any]) -> int:
+    """Free-memory reading across firmware payload spellings (0 without one).
+
+    Read both spellings (memory_free_reading) so either firmware family
+    reports correctly.
+    """
+    reading = memory_free_reading(health_payload)
+    return 0 if reading is None else reading
 
 
 def battery_percent(health_payload: dict[str, Any]) -> int | None:
