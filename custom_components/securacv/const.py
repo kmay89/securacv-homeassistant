@@ -146,8 +146,17 @@ EVIDENCE_README_SOURCE = "evidence-README.txt"
 EVIDENCE_ZIP_VIEWER = "evidence_viewer.html"
 EVIDENCE_ZIP_README = "README.txt"
 EVIDENCE_ZIP_KEY = "WITNESS_KEY.txt"
+# The pack read out in plain language (witness_statement.py): what the
+# witness recorded in the window, what that proves, what it does not, how to
+# check it. A reading of the bundle, never evidence; the viewer ignores it.
+EVIDENCE_ZIP_STATEMENT = "WITNESS_STATEMENT.txt"
 # The kernel's bundle download must stay bounded: one coarse log is small.
 EXPORT_BUNDLE_MAX_BYTES = 64 * 1024 * 1024
+# Every other kernel answer is a JSON document of a few KB (an identity, a
+# status, a sealed-log page); a kernel — or whatever answers at its URL —
+# that sends more than this is not speaking the contract, and the body is
+# refused before it is decoded.
+API_JSON_MAX_BYTES = 4 * 1024 * 1024
 
 # The kernel's 10-minute time bucket: every "at" the integration records is a
 # bucket start, never an event-precise epoch (coarse time, invariant III).
