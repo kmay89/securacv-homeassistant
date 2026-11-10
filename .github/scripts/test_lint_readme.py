@@ -652,6 +652,13 @@ class CommandLine(unittest.TestCase):
         self.assertEqual(code, 0, text)
         self.assertIn("4 resolve", text)
 
+    def test_the_summary_line_keeps_the_shape_the_monorepo_reads(self):
+        # kmay89/securaCV's scripts/check_hacs_store_links.py (VOUCHED) counts
+        # an exit 0 as a pass only with this line; this is its regex.
+        _, text = self.main("--source", str(self.src))
+        self.assertRegex(text, re.compile(
+            r"^links into kmay89/securaCV OK\W+(\d+) resolve\b", re.MULTILINE))
+
     def test_a_renamed_heading_exits_1(self):
         write(self.src, "docs/guide.md", "# Guide\n## Step 1: Set up\n")
         code, text = self.main("--source", str(self.src))

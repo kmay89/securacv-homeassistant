@@ -889,6 +889,11 @@ def _augment_issue_registry() -> None:
         def __init__(self, hass) -> None:
             self._hass = hass
 
+        @property
+        def issues(self):
+            """Every issue, keyed (domain, issue_id), as the core's registry has them."""
+            return {key: self.async_get_issue(*key) for key in list(_issues(self._hass))}
+
         def async_get_issue(self, domain, issue_id):
             issue = _issues(self._hass).get((domain, issue_id))
             if issue is None:
@@ -1502,6 +1507,15 @@ def _augment_notifications_registry_dt() -> None:
 
         dt_mod.utcnow = lambda: datetime.now(timezone.utc)
         dt_mod.now = lambda: datetime.now(timezone.utc)
+    if not hasattr(dt_mod, "as_local"):
+        # evidence.py prints the witness statement's windows in the owner's
+        # clock through these two; the stub's clock is UTC, like the real
+        # lane's default config.
+        from datetime import datetime, timezone
+
+        dt_mod.UTC = timezone.utc
+        dt_mod.utc_from_timestamp = lambda epoch_s: datetime.fromtimestamp(epoch_s, tz=timezone.utc)
+        dt_mod.as_local = lambda value: value.astimezone(timezone.utc)
     util_mod = _module("homeassistant.util")
     if not hasattr(util_mod, "dt"):
         util_mod.dt = dt_mod

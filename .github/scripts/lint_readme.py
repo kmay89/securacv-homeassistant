@@ -789,6 +789,8 @@ def lint_upstream(source: Path) -> int:
         for p in problems:
             print(f"  {p}", file=sys.stderr)
         return 1
+    # kmay89/securaCV's scripts/check_hacs_store_links.py matches this line
+    # (VOUCHED); reword it there first, or every monorepo PR goes red.
     print(f"links into kmay89/securaCV OK — {checked} resolve against "
           f"{source} (files, directories, headings, lines)")
     return 0
