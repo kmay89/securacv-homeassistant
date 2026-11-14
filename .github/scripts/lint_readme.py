@@ -49,6 +49,11 @@ that commit by a digest in scripts/tests/test_lint_spelling.py. A copy
 here would only be one more to keep in step. From a monorepo checkout run
 `python3 scripts/lint_spelling.py /path/to/this/repo/README.md` instead.
 
+--source also checks the store page's links to securacv.com against the
+address list the website publishes and the monorepo carries
+(canary-local/devices/site_contract.json); a checkout without that list is
+reported and passes.
+
 --source MODE: THE LINKS INTO kmay89/securaCV. The store page sends readers
 to the monorepo's docs by absolute URL (most of them to a heading), and the
 default mode cannot see whether those still land: a heading renamed
@@ -85,6 +90,7 @@ own reason):
     otherwise, and the line is not there to land on).
 """
 import argparse
+import json
 import functools
 import html
 import os
@@ -694,6 +700,61 @@ def check_upstream(paths, source: Path, ref: str = UPSTREAM_REF):
     return problems, checked, unchecked
 
 
+# --- --source: the links to securacv.com --------------------------------------
+# The store page also sends readers to the website (the install page, the
+# Help Desk). The website states every address it answers in a contract the
+# monorepo carries (canary-local/devices/site_contract.json: routes, the
+# files it publishes, each page's anchors), so with a monorepo checkout at
+# hand those links can be held to it — a page renamed on the site would
+# otherwise break the HACS page with nothing here going red. A checkout whose
+# contract predates the address list is said out loud and passes: this check
+# must not fail a run for a file another repository has not carried yet.
+SITE_URL_RE = re.compile(
+    r"https://securacv\.com(?![\w.-])(/[^\s\"'<>)\]}\\`|,;]*)?")
+SITE_CONTRACT = Path("canary-local") / "devices" / "site_contract.json"
+
+
+def site_links(text: str):
+    """(line number, path, anchor) for every securacv.com URL in `text`."""
+    for n, line in enumerate(text.splitlines(), 1):
+        for m in SITE_URL_RE.finditer(line):
+            raw = (m.group(1) or "/").rstrip(URL_TRAIL)
+            path, _, anchor = raw.partition("#")
+            yield n, (path.partition("?")[0] or "/"), anchor.partition("?")[0]
+
+
+def check_site(paths, source: Path):
+    """(problems, links checked, note). `note` is set, and nothing is
+    checked, when the checkout carries no address list."""
+    contract = source / SITE_CONTRACT
+    try:
+        data = json.loads(contract.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return [], 0, f"{SITE_CONTRACT} is not in {source}"
+    if not all(k in data for k in ("routes", "files", "anchors")):
+        return [], 0, (f"{SITE_CONTRACT} in {source} predates the site's "
+                       "address list")
+    routes, files, anchors = set(data["routes"]), set(data["files"]), data["anchors"]
+    problems, checked = [], 0
+    for path in paths:
+        if not path.exists():
+            continue
+        for n, target, anchor in site_links(path.read_text(encoding="utf-8")):
+            checked += 1
+            where = f"{path.name}:{n}: https://securacv.com{target}"
+            route = (target if target in routes
+                     else target.rstrip("/") if target.rstrip("/") in routes
+                     else None)
+            if route is None:
+                if target not in files:
+                    problems.append(f"{where} — not an address the website "
+                                    "answers")
+                continue
+            if anchor and anchor not in anchors.get(route, ()):
+                problems.append(f"{where}#{anchor} — no such anchor on {route}")
+    return problems, checked, None
+
+
 # The --source mode's own probes: a slugger or URL parser that has drifted
 # (a runner's Python changing unicodedata or urllib under it) must not
 # report the store page's links fine.
@@ -783,9 +844,18 @@ def lint_upstream(source: Path) -> int:
         [ROOT / name for name in FILES], source)
     for u in unchecked:
         print(f"  not checked (a GitHub page, not a path): {u}")
+    site_problems, site_checked, site_note = check_site(
+        [ROOT / name for name in FILES], source)
+    problems += site_problems
+    if site_note:
+        print(f"  links to securacv.com not checked: {site_note}")
+    elif not site_problems:
+        print(f"links to securacv.com OK — {site_checked} are addresses the "
+              "website answers")
     if problems:
         print(f"lint_readme.py --source: {len(problems)} link(s) into "
-              f"kmay89/securaCV do not land in {source}:", file=sys.stderr)
+              f"kmay89/securaCV or to securacv.com do not land (checked "
+              f"against {source}):", file=sys.stderr)
         for p in problems:
             print(f"  {p}", file=sys.stderr)
         return 1

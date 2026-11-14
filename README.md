@@ -11,6 +11,17 @@ can verify offline. **Canary** witness devices — the project's own small
 witnesses — join the same integration over MQTT, each with its own signed
 chain.
 
+**Where this stands.** The integration and the SecuraCV app are released,
+and SecuraCV as a whole is pre-1.0. HACS lists this as a custom repository,
+not in its default catalog yet.
+[What exists today](https://securacv.com/today) is the short, honest list.
+
+**New here?** [securacv.com/home-assistant](https://securacv.com/home-assistant)
+shows what the install adds and all three ways in.
+[The Help Desk](https://securacv.com/help) is where to go when something is
+stuck, and [How It Works](https://securacv.com/how-it-works) explains the
+signatures with a demo you can break.
+
 ## What it creates
 
 - **One SecuraCV device per witness kernel** (the SecuraCV app on Home
@@ -119,7 +130,7 @@ fetched icons from its own feed when this was written
 
 ## Then connect a witness kernel
 
-Frigate's events are witnessed by the **Privacy Witness Kernel**, which runs
+Frigate's events are witnessed by the **witness kernel**, which runs
 beside Frigate and announces itself to this integration. Canary devices
 need only the broker: they are discovered within about 30 seconds of
 connecting, no kernel needed

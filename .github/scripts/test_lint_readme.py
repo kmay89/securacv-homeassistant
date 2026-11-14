@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import os
 import re
 import shutil
@@ -707,6 +708,83 @@ class CommandLine(unittest.TestCase):
               "Our record is tamper-proof.\n")
         with mock.patch.object(lr, "lint_prose", side_effect=AssertionError):
             self.assertEqual(self.main("--source", str(self.src))[0], 0)
+
+
+class SiteLinks(unittest.TestCase):
+    """--source also holds the store page's links to securacv.com to the
+    address list the monorepo carries from the website."""
+
+    CONTRACT = {"routes": ["/", "/help", "/home-assistant"],
+                "files": ["/store.json"],
+                "anchors": {"/help": ["s-safe-mode"]}}
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.mirror, self.src = self.tmp / "mirror", self.tmp / "securaCV"
+        write(self.src, "docs/guide.md", "# Guide\n")
+        for name in ("AGENTS.md", "CLAUDE.md"):
+            write(self.mirror, name, f"[monorepo]({REPO})\n")
+        patcher = mock.patch.object(lr, "ROOT", self.mirror)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        lr.anchors_of.cache_clear()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+
+    def run_source(self, readme, contract=CONTRACT):
+        write(self.mirror, "README.md", f"[g]({REPO}/blob/main/docs/guide.md)\n" + readme)
+        if contract is not None:
+            write(self.src, str(lr.SITE_CONTRACT), json.dumps(contract))
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = lr.main(["--source", str(self.src)])
+        return code, out.getvalue(), err.getvalue()
+
+    def test_good_links_pass_and_the_vouched_line_is_still_printed(self):
+        code, out, _ = self.run_source(
+            "[install](https://securacv.com/home-assistant), "
+            "[help](https://securacv.com/help#s-safe-mode), https://securacv.com/store.json "
+            "and https://securacv.com.\n")
+        self.assertEqual(code, 0)
+        self.assertIn("links to securacv.com OK — 3 are addresses", out)
+        # the monorepo's check_hacs_store_links.py reads this exact line
+        self.assertRegex(out, r"(?m)^links into kmay89/securaCV OK\W+\d+ resolve\b")
+
+    def test_a_page_the_site_does_not_have_fails(self):
+        code, _, err = self.run_source("[x](https://securacv.com/faq-page)\n")
+        self.assertEqual(code, 1)
+        self.assertIn("README.md:2: https://securacv.com/faq-page — not an address", err)
+
+    def test_an_anchor_the_page_lacks_fails(self):
+        code, _, err = self.run_source("https://securacv.com/help#nope\n")
+        self.assertEqual(code, 1)
+        self.assertIn("#nope — no such anchor on /help", err)
+
+    def test_another_host_is_not_the_site(self):
+        code, out, _ = self.run_source("https://ops.securacv.com/x https://securacv.com.example/y\n")
+        self.assertEqual(code, 0)
+        self.assertIn("securacv.com OK — 0 are addresses", out)
+
+    def test_a_checkout_without_the_address_list_is_said_and_passes(self):
+        for contract in (None, {"paths": [], "patterns": []}):
+            code, out, _ = self.run_source("https://securacv.com/anything\n", contract)
+            self.assertEqual(code, 0, contract)
+            self.assertIn("links to securacv.com not checked", out)
+            (self.src / lr.SITE_CONTRACT).unlink(missing_ok=True)
+
+    def test_the_real_store_page_links_only_real_addresses(self):
+        # against the sibling monorepo checkout when there is one
+        real_root = Path(__file__).resolve().parents[2]
+        sibling = real_root.parent / "securaCV"
+        if not (sibling / lr.SITE_CONTRACT).is_file():
+            self.skipTest("no sibling monorepo checkout with a carried contract")
+        problems, checked, note = lr.check_site(
+            [real_root / n for n in lr.FILES], sibling)
+        if note:
+            self.skipTest(note)
+        self.assertEqual(problems, [])
+        self.assertGreaterEqual(checked, 3, "the store page lost its links to the website")
 
 
 class MirrorFreshnessWiring(unittest.TestCase):
