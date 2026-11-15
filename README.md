@@ -142,7 +142,7 @@ connecting, no kernel needed
 | **Home Assistant Container** beside a Docker Frigate | the [Docker sidecar](https://github.com/kmay89/securaCV/blob/main/docs/frigate_integration.md#quick-start-docker-no-home-assistant) next to Frigate (one compose file, two lines to edit) | one 6-digit code |
 
 **The app.** Once it runs, **Settings → Devices & Services** shows a
-*SecuraCV app* discovered card. Press **Configure**; the form has no fields.
+*SecuraCV app* card under Discovered. Press **Add**; the form has no fields.
 Frigate events appear as sealed witness events within a minute of the next
 detection
 ([Path 1](https://github.com/kmay89/securaCV/blob/main/docs/homeassistant_setup.md#path-1-home-assistant-os--the-securacv-app)).
@@ -179,8 +179,10 @@ almost everyone; the manual modes are there for a kernel that announces
 nothing. For the app, the kernel's API is reached through the rotating
 **token file** the app writes to `/config/api_token`, which the integration
 re-reads when the token rotates. For the sidecar, the pairing code above
-replaces the token. **Reconfigure** on the entry changes the address, the
-credential or the MQTT prefix without losing the kernel's pin; a kernel
+replaces the token. **Reconfigure** on the entry changes the address and the
+MQTT prefix without losing the kernel's pin; the app's entry can also change
+its token file, and a paired sidecar is re-paired on every change with a
+fresh code from `docker exec securacv pair`; a kernel
 that starts rejecting the credential asks to re-authenticate with a fresh
 code.
 
@@ -247,7 +249,8 @@ This repository distributes the integration. Everything under
 `custom_components/securacv/` (the `brand/` icon included) and the root
 `conftest.py` are byte-identical copies from
 [`kmay89/securaCV`](https://github.com/kmay89/securaCV), where development
-happens. Please file issues and PRs there.
+happens. Please file issues and PRs there, and report anything exploitable
+privately, as [`SECURITY.md`](SECURITY.md) says.
 
 The monorepo's
 [`homeassistant-mirror.yml`](https://github.com/kmay89/securaCV/blob/main/.github/workflows/homeassistant-mirror.yml)
